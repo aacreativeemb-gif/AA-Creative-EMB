@@ -614,6 +614,11 @@ A: Type "agent", "human digitizer", WhatsApp (+44 7462 23 8732) or email us at a
     }
   ];
 
+  // Admin Security & 2FA State
+  adminPassword: string = 'Admin@123';
+  trustedDeviceIds: string[] = [];
+  activeOtps: { [email: string]: { code: string; expiresAt: number; type: 'login' | 'reset' } } = {};
+
   analytics: PlatformAnalytics = {
     totalChats: 184,
     answeredChats: 180,

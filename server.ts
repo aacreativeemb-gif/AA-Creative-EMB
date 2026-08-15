@@ -30,60 +30,207 @@ async function startServer() {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  // --- AUTHENTICATION & SECURITY ENDPOINTS ---
+  // --- AUTHENTICATION & 2FA SECURITY ENDPOINTS ---
   app.post('/api/admin/login', (req, res) => {
-    const { email, password } = req.body;
+    const { email, password, deviceId, isGoogleAuth } = req.body;
     if (!email) {
       return res.status(400).json({ success: false, error: 'Email or User ID is required' });
     }
 
     const cleanEmail = email.toLowerCase().trim();
-    // Allow primary admin aacreativeemb@gmail.com or admin@aacreativeemb.com
-    if (
+    const isAdmin = (
       cleanEmail === 'aacreativeemb@gmail.com' ||
       cleanEmail === 'admin@aacreativeemb.com' ||
       cleanEmail === 'admin'
-    ) {
-      const adminUser = globalStore.users.find(u => u.role === 'admin') || {
-        id: 'user_admin_1',
-        name: 'Arthur Pendelton (Admin)',
-        email: 'aacreativeemb@gmail.com',
-        avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
-        role: 'admin',
-        status: 'online',
-        departmentIds: ['dept_digitizing', 'dept_support', 'dept_vector'],
-        capacity: 10,
-        activeChatsCount: 2
-      };
-
-      return res.json({
-        success: true,
-        token: `aa_token_${Date.now()}`,
-        user: adminUser
-      });
-    }
+    );
 
     const agentUser = globalStore.users.find(u => u.email.toLowerCase() === cleanEmail);
-    if (agentUser) {
-      return res.json({
-        success: true,
-        token: `aa_token_${Date.now()}`,
-        user: agentUser
+
+    if (!isAdmin && !agentUser) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid credentials. Only authorized AA Creative Embroidery staff can access.'
       });
     }
 
-    return res.status(401).json({
+    // Password Check (unless isGoogleAuth is used)
+    if (!isGoogleAuth) {
+      if (!password) {
+        return res.status(400).json({ success: false, error: 'Password is required' });
+      }
+
+      if (isAdmin && password !== globalStore.adminPassword) {
+        return res.status(401).json({
+          success: false,
+          error: 'Incorrect password. Default first-time password is Admin@123 or use "Forgot Password" to reset.'
+        });
+      }
+
+      if (!isAdmin && agentUser && password !== 'Admin@123' && password !== globalStore.adminPassword) {
+        return res.status(401).json({
+          success: false,
+          error: 'Incorrect password for agent account.'
+        });
+      }
+    }
+
+    const targetUser = isAdmin
+      ? (globalStore.users.find(u => u.role === 'admin') || {
+          id: 'user_admin_1',
+          name: 'Arthur Pendelton (Admin)',
+          email: 'aacreativeemb@gmail.com',
+          avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
+          role: 'admin',
+          status: 'online',
+          departmentIds: ['dept_digitizing', 'dept_support', 'dept_vector'],
+          capacity: 10,
+          activeChatsCount: 2
+        })
+      : agentUser!;
+
+    // Check if this device is already trusted
+    const isDeviceTrusted = deviceId && globalStore.trustedDeviceIds.includes(deviceId);
+
+    if (isDeviceTrusted) {
+      return res.json({
+        success: true,
+        token: `aa_token_${Date.now()}`,
+        user: targetUser,
+        trustedDevice: true
+      });
+    }
+
+    // Device is not trusted -> Require 2FA Verification Code
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const targetEmail = 'aacreativeemb@gmail.com';
+    globalStore.activeOtps[targetEmail] = {
+      code: otpCode,
+      expiresAt: Date.now() + 15 * 60 * 1000, // 15 mins
+      type: 'login'
+    };
+
+    const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || '127.0.0.1';
+
+    console.log(`\n=============================================================`);
+    console.log(`[2FA SECURITY CODE DISPATCHED -> ${targetEmail}]`);
+    console.log(`Subject: 🔐 AA Creative Portal 2FA Verification Code: ${otpCode}`);
+    console.log(`Attempted Account: ${cleanEmail}`);
+    console.log(`Device ID: ${deviceId || 'New Unregistered Device'}`);
+    console.log(`IP Address: ${clientIp}`);
+    console.log(`Verification Code: ${otpCode} (Valid for 15 minutes)`);
+    console.log(`=============================================================\n`);
+
+    return res.json({
       success: false,
-      error: 'Invalid credentials. Only authorized AA Creative Embroidery staff can access.'
+      requires2FA: true,
+      email: targetEmail,
+      otpPreview: otpCode,
+      message: `A 6-digit verification code has been sent to ${targetEmail}.`
     });
   });
 
-  app.post('/api/admin/reset-password', (req, res) => {
-    const { email } = req.body;
-    console.log(`[PASSWORD RESET ALERT] Password reset request for: ${email || 'aacreativeemb@gmail.com'}. Notification dispatched to admin inbox.`);
+  // Verify 2FA & Trust Device
+  app.post('/api/admin/verify-2fa', (req, res) => {
+    const { email, code, deviceId, trustDevice } = req.body;
+    const targetEmail = 'aacreativeemb@gmail.com';
+    const record = globalStore.activeOtps[targetEmail];
+
+    if (!record || record.code !== code?.trim() || Date.now() > record.expiresAt) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid or expired 6-digit verification code. Please check your email and try again.'
+      });
+    }
+
+    // Code is valid! Clear OTP
+    delete globalStore.activeOtps[targetEmail];
+
+    // If user checked "Trust this device"
+    if (trustDevice && deviceId) {
+      if (!globalStore.trustedDeviceIds.includes(deviceId)) {
+        globalStore.trustedDeviceIds.push(deviceId);
+      }
+    }
+
+    const adminUser = globalStore.users.find(u => u.role === 'admin') || {
+      id: 'user_admin_1',
+      name: 'Arthur Pendelton (Admin)',
+      email: 'aacreativeemb@gmail.com',
+      avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
+      role: 'admin',
+      status: 'online',
+      departmentIds: ['dept_digitizing', 'dept_support', 'dept_vector'],
+      capacity: 10,
+      activeChatsCount: 2
+    };
+
     return res.json({
       success: true,
-      message: 'Password reset link and temporary security code have been sent to aacreativeemb@gmail.com.'
+      token: `aa_token_${Date.now()}`,
+      user: adminUser,
+      deviceId: deviceId
+    });
+  });
+
+  // Send Reset Password OTP
+  app.post('/api/admin/send-reset-otp', (req, res) => {
+    const { email } = req.body;
+    const targetEmail = 'aacreativeemb@gmail.com';
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+    globalStore.activeOtps[targetEmail] = {
+      code: otpCode,
+      expiresAt: Date.now() + 15 * 60 * 1000,
+      type: 'reset'
+    };
+
+    console.log(`\n=============================================================`);
+    console.log(`[PASSWORD RESET OTP DISPATCHED -> ${targetEmail}]`);
+    console.log(`Subject: 🔑 AA Creative Portal Password Reset Code: ${otpCode}`);
+    console.log(`Requested Email: ${email || targetEmail}`);
+    console.log(`Reset Code: ${otpCode} (Valid for 15 minutes)`);
+    console.log(`=============================================================\n`);
+
+    return res.json({
+      success: true,
+      otpPreview: otpCode,
+      message: `6-digit reset code has been sent to ${targetEmail}.`
+    });
+  });
+
+  // Reset Password with OTP & New Custom Password
+  app.post('/api/admin/reset-password', (req, res) => {
+    const { email, code, newPassword } = req.body;
+    const targetEmail = 'aacreativeemb@gmail.com';
+    const record = globalStore.activeOtps[targetEmail];
+
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        error: 'Password must be at least 6 characters long.'
+      });
+    }
+
+    if (!record || record.code !== code?.trim() || Date.now() > record.expiresAt) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid or expired 6-digit verification code.'
+      });
+    }
+
+    // Update Master Admin Password
+    globalStore.adminPassword = newPassword;
+    delete globalStore.activeOtps[targetEmail];
+
+    console.log(`\n=============================================================`);
+    console.log(`[ADMIN PASSWORD UPDATED SUCCESSFULLY]`);
+    console.log(`Target: ${targetEmail}`);
+    console.log(`Updated at: ${new Date().toLocaleString()}`);
+    console.log(`=============================================================\n`);
+
+    return res.json({
+      success: true,
+      message: 'Password updated successfully! You can now log in with your new password.'
     });
   });
 
