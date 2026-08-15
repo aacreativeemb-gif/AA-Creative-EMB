@@ -254,6 +254,71 @@ async function startServer() {
     });
   });
 
+  // Get Email / SMTP configuration status
+  app.get('/api/email/config', (req, res) => {
+    const cfg = globalStore.emailConfig;
+    res.json({
+      smtpUser: cfg.smtpUser,
+      smtpHost: cfg.smtpHost,
+      smtpPort: cfg.smtpPort,
+      hasPassword: Boolean(cfg.smtpPass && cfg.smtpPass.length > 0),
+      hasResendKey: Boolean(cfg.resendApiKey && cfg.resendApiKey.length > 0)
+    });
+  });
+
+  // Save Email / SMTP configuration
+  app.post('/api/email/config', (req, res) => {
+    const { smtpUser, smtpPass, smtpHost, smtpPort, resendApiKey } = req.body;
+    if (smtpUser) globalStore.emailConfig.smtpUser = smtpUser.trim();
+    if (smtpPass !== undefined) globalStore.emailConfig.smtpPass = smtpPass.trim();
+    if (smtpHost) globalStore.emailConfig.smtpHost = smtpHost.trim();
+    if (smtpPort) globalStore.emailConfig.smtpPort = parseInt(smtpPort, 10);
+    if (resendApiKey !== undefined) globalStore.emailConfig.resendApiKey = resendApiKey.trim();
+
+    return res.json({
+      success: true,
+      message: 'Email & SMTP settings saved successfully!'
+    });
+  });
+
+  // Send Test Email directly to admin
+  app.post('/api/email/test', async (req, res) => {
+    const targetEmail = req.body.email || 'aacreativeemb@gmail.com';
+    const testResult = await sendAdminEmailNotification({
+      to: targetEmail,
+      subject: `🧪 [Test Email] AA Creative Support Portal SMTP Test`,
+      text: `Hello Admin,\n\nThis is a verified test email sent from the AA Creative Embroidery Support Desk.\n\nYour email notification system is working perfectly!\n\nTime: ${new Date().toUTCString()}\nTarget: ${targetEmail}\n\nAA Creative Support Desk`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; background: #0f172a; color: #ffffff; padding: 24px; border-radius: 12px; border: 1px solid #1e293b;">
+          <h2 style="color: #22c55e; margin-top: 0;">✅ Verified Email Test Successful</h2>
+          <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6;">
+            Your AA Creative Support email notifications are properly configured and operational!
+          </p>
+          <div style="background: #1e293b; padding: 14px; border-radius: 8px; font-size: 13px; color: #94a3b8; margin: 16px 0;">
+            <p style="margin: 4px 0;"><strong>Recipient:</strong> ${targetEmail}</p>
+            <p style="margin: 4px 0;"><strong>Timestamp:</strong> ${new Date().toUTCString()}</p>
+            <p style="margin: 4px 0;"><strong>Sender:</strong> ${globalStore.emailConfig.smtpUser}</p>
+          </div>
+          <p style="color: #64748b; font-size: 12px; margin-bottom: 0;">AA Creative Embroidery UK Ltd Support System</p>
+        </div>
+      `
+    });
+
+    if (testResult.success) {
+      return res.json({
+        success: true,
+        method: testResult.method,
+        message: `Test email successfully delivered to ${targetEmail} via ${testResult.method.toUpperCase()}!`
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        method: testResult.method,
+        error: testResult.error || 'Failed to send test email. Please check your Google App Password.'
+      });
+    }
+  });
+
   // Full state endpoint
   app.get('/api/state', (req, res) => {
     res.json({

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Mail,
   Zap,
@@ -9,8 +9,167 @@ import {
   Smartphone,
   Globe,
   Lock,
-  RefreshCw
+  RefreshCw,
+  AlertCircle,
+  KeyRound,
+  ExternalLink
 } from 'lucide-react';
+
+export const EmailConfigForm: React.FC = () => {
+  const [smtpUser, setSmtpUser] = useState('aacreativeemb@gmail.com');
+  const [smtpPass, setSmtpPass] = useState('');
+  const [hasPassword, setHasPassword] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    fetch('/api/email/config')
+      .then(res => res.json())
+      .then(data => {
+        if (data.smtpUser) setSmtpUser(data.smtpUser);
+        setHasPassword(data.hasPassword);
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    setStatusMessage(null);
+    try {
+      const res = await fetch('/api/email/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          smtpUser,
+          smtpPass: smtpPass || undefined
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (smtpPass) setHasPassword(true);
+        setSmtpPass('');
+        setStatusMessage({ type: 'success', text: '✅ Google App Password saved securely! Live emails are now enabled.' });
+      } else {
+        setStatusMessage({ type: 'error', text: data.error || 'Failed to save settings.' });
+      }
+    } catch {
+      setStatusMessage({ type: 'error', text: 'Network connection error while saving.' });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleTestEmail = async () => {
+    setIsTesting(true);
+    setStatusMessage(null);
+    try {
+      const res = await fetch('/api/email/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: smtpUser })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setStatusMessage({
+          type: 'success',
+          text: `🎉 Verified! Test email successfully delivered to ${smtpUser}. Check your Gmail inbox!`
+        });
+      } else {
+        setStatusMessage({
+          type: 'error',
+          text: `❌ Email sending failed: ${data.error || 'Please enter your 16-character Google App Password below and click Save.'}`
+        });
+      }
+    } catch {
+      setStatusMessage({
+        type: 'error',
+        text: '❌ Could not connect to mail server. Please verify your Google App Password.'
+      });
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {statusMessage && (
+        <div className={`p-3 rounded-lg text-xs font-medium border flex items-start gap-2 ${
+          statusMessage.type === 'success'
+            ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+            : 'bg-rose-50 border-rose-200 text-rose-800'
+        }`}>
+          {statusMessage.type === 'success' ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+          ) : (
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+          )}
+          <div>{statusMessage.text}</div>
+        </div>
+      )}
+
+      <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-12 gap-3">
+        <div className="md:col-span-5 space-y-1">
+          <label className="text-xs font-semibold text-slate-700">Recipient / Dispatch Email</label>
+          <input
+            type="email"
+            value={smtpUser}
+            onChange={e => setSmtpUser(e.target.value)}
+            required
+            className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-indigo-500 focus:bg-white"
+            placeholder="aacreativeemb@gmail.com"
+          />
+        </div>
+
+        <div className="md:col-span-5 space-y-1">
+          <label className="text-xs font-semibold text-slate-700 flex items-center justify-between">
+            <span>Google 16-Digit App Password</span>
+            {hasPassword && <span className="text-[10px] text-emerald-600 font-bold">● Active & Saved</span>}
+          </label>
+          <input
+            type="text"
+            value={smtpPass}
+            onChange={e => setSmtpPass(e.target.value)}
+            placeholder={hasPassword ? '•••• •••• •••• •••• (Saved - enter new to change)' : 'Paste 16-digit code here (e.g. abcd efgh ijkl mnop)'}
+            className="w-full bg-slate-50 border-2 border-indigo-300 rounded-lg px-3 py-2 text-xs font-mono text-slate-800 focus:outline-none focus:border-indigo-600 focus:bg-white"
+          />
+        </div>
+
+        <div className="md:col-span-2 flex items-end">
+          <button
+            type="submit"
+            disabled={isSaving}
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2.5 px-3 rounded-lg transition disabled:opacity-50 shadow"
+          >
+            {isSaving ? 'Saving...' : 'Save Password'}
+          </button>
+        </div>
+      </form>
+
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+        <button
+          type="button"
+          onClick={handleTestEmail}
+          disabled={isTesting}
+          className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 py-1.5 rounded-lg flex items-center gap-2 transition disabled:opacity-50"
+        >
+          {isTesting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+          Send Test Email to {smtpUser}
+        </button>
+
+        <a
+          href="https://myaccount.google.com/apppasswords"
+          target="_blank"
+          rel="noreferrer"
+          className="text-xs text-blue-600 hover:text-blue-700 font-semibold underline flex items-center gap-1"
+        >
+          <KeyRound className="w-3.5 h-3.5" /> Get 16-digit password from Google <ExternalLink className="w-3 h-3" />
+        </a>
+      </div>
+    </div>
+  );
+};
 
 interface IntegrationsViewProps {
   onSimulateGmail: (email: string, name: string, subject: string, body: string) => void;
@@ -58,6 +217,25 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({
         <p className="text-xs text-slate-500 mt-0.5">
           Unified support channels receiving incoming emails and WhatsApp messages directly into the Unified Support Inbox with AI First-Line Auto-Responses.
         </p>
+      </div>
+
+      {/* Real SMTP Dispatch & Google 16-Digit Password Card */}
+      <div className="bg-white border-2 border-indigo-200 rounded-2xl p-5 shadow-xs space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">
+              <Mail className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                Real Outgoing Email Dispatch (Google 16-Digit App Password)
+              </h3>
+              <p className="text-[11px] text-slate-500">Paste your 16-digit Google App Password here to send live emails to <strong>aacreativeemb@gmail.com</strong></p>
+            </div>
+          </div>
+        </div>
+
+        <EmailConfigForm />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

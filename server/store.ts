@@ -619,6 +619,21 @@ A: Type "agent", "human digitizer", WhatsApp (+44 7462 23 8732) or email us at a
   trustedDeviceIds: string[] = [];
   activeOtps: { [email: string]: { code: string; expiresAt: number; type: 'login' | 'reset' } } = {};
 
+  // Email Notification & SMTP Dispatch Config
+  emailConfig: {
+    smtpUser: string;
+    smtpPass: string;
+    smtpHost: string;
+    smtpPort: number;
+    resendApiKey?: string;
+  } = {
+    smtpUser: process.env.SMTP_USER || process.env.EMAIL_USER || 'aacreativeemb@gmail.com',
+    smtpPass: process.env.SMTP_PASS || process.env.EMAIL_PASS || process.env.GMAIL_APP_PASSWORD || '',
+    smtpHost: process.env.SMTP_HOST || 'smtp.gmail.com',
+    smtpPort: parseInt(process.env.SMTP_PORT || '465', 10),
+    resendApiKey: process.env.RESEND_API_KEY || ''
+  };
+
   analytics: PlatformAnalytics = {
     totalChats: 184,
     answeredChats: 180,
