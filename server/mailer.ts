@@ -132,7 +132,7 @@ export async function sendAdminEmailNotification({
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          from: 'AA Creative Support <onboarding@resend.dev>',
+          from: 'AA Creative Support <support@aacreativeemb.com>',
           to: [to],
           subject,
           text,
