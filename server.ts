@@ -962,7 +962,7 @@ async function startServer() {
       </button>
     </div>
     <div id="aa-messages-container"></div>
-    <div id="aa-typing">AI Assistant is typing...</div>
+    <div id="aa-typing">Support agent is typing...</div>
     <div id="aa-quick-actions">
       <span class="aa-pill" data-q="What are your embroidery digitizing rates?">🧵 Digitizing Rates</span>
       <span class="aa-pill" data-q="How long does logo digitizing take?">⚡ Turnaround Time</span>

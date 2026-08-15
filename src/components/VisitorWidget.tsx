@@ -286,13 +286,8 @@ export const VisitorWidget: React.FC<VisitorWidgetProps> = ({
                     >
                       <div className="flex items-center gap-1.5 mb-0.5 px-1">
                         <span className="text-[10px] font-semibold text-slate-500">
-                          {msg.senderName}
+                          {isAi ? 'Support Specialist' : msg.senderName}
                         </span>
-                        {isAi && (
-                          <span className="text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.2 rounded font-bold">
-                            AI
-                          </span>
-                        )}
                         <span className="text-[9px] text-slate-400">
                           {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
@@ -302,18 +297,10 @@ export const VisitorWidget: React.FC<VisitorWidgetProps> = ({
                         className={`max-w-[82%] px-3.5 py-2.5 rounded-2xl text-xs leading-relaxed shadow-2xs ${
                           isVisitor
                             ? 'bg-blue-600 text-white rounded-br-xs'
-                            : isAi
-                            ? 'bg-white text-slate-800 border border-slate-200 rounded-bl-xs'
-                            : 'bg-emerald-700 text-white rounded-bl-xs'
+                            : 'bg-white text-slate-800 border border-slate-200 rounded-bl-xs'
                         }`}
                       >
                         <p className="whitespace-pre-wrap">{msg.text}</p>
-                        {msg.confidenceScore && (
-                          <div className="mt-1 pt-1 border-t border-slate-100 text-[9px] text-slate-400 flex items-center justify-between">
-                            <span>Confidence: {msg.confidenceScore}%</span>
-                            {msg.languageDetected && <span>{msg.languageDetected}</span>}
-                          </div>
-                        )}
                       </div>
                     </div>
                   );
@@ -322,8 +309,8 @@ export const VisitorWidget: React.FC<VisitorWidgetProps> = ({
                 {/* Typing Indicator */}
                 {isTyping && (
                   <div className="flex items-center gap-2 text-slate-400 text-xs my-2 px-2">
-                    <Bot className="w-4 h-4 text-blue-500 animate-bounce" />
-                    <span className="italic text-[11px] text-slate-500">AI Support Agent is typing...</span>
+                    <Headphones className="w-3.5 h-3.5 text-blue-500 animate-pulse" />
+                    <span className="italic text-[11px] text-slate-500">Support agent is typing...</span>
                   </div>
                 )}
 

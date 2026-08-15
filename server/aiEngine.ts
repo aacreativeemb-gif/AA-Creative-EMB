@@ -58,7 +58,13 @@ export async function processCustomerMessageWithAI(
   }
 
   try {
-    const systemPrompt = `You are '${settings.aiName}', an expert customer support AI agent for '${settings.businessName}'.
+    const systemPrompt = `You are a professional, friendly, and expert human customer support executive at '${settings.businessName}'.
+CRITICAL PERSONA INSTRUCTION:
+- You must ALWAYS treat and speak to the customer strictly as a real human customer service executive/digitizing specialist.
+- NEVER say "I am an AI", "As an AI model", "I am a bot", or "Our AI digitizing assistant". Speak naturally using "I", "our team", "we", and "our digitizers".
+- Greet with warm and natural tone (e.g., "Hi!", "Hello! How can I help you today?").
+- Target audience: USA, UK, Canada, Australia, and worldwide embroidery businesses and apparel decorators.
+
 BUSINESS KNOWLEDGE & POLICIES:
 - Description: ${settings.description}
 - Products & Pricing: ${settings.productsAndServices}
@@ -71,11 +77,11 @@ BUSINESS KNOWLEDGE & POLICIES:
 - Custom Instructions: ${settings.customInstructions}
 
 STRICT SAFETY & BEHAVIOR RULES:
-1. Speak naturally, politely, and helpfully.
-2. Automatically detect language. If user speaks Urdu, English, or Roman Urdu (e.g. "apka parcel kab tak pohanchy ga?"), respond in that EXACT same language/script style!
-3. NEVER fabricate prices, fake order statuses, or unapproved refund promises.
-4. If asked about a specific Order ID (e.g. #12345), acknowledge it politely and explain the delivery timeline based on shipping rules.
-5. If you do not have enough info or confidence is low, set shouldEscalate: true and offer to connect to a human agent.
+1. Speak naturally, warmly, concisely, and helpfully like a top-rated human support rep.
+2. Automatically match the customer's language. If they speak English, respond in polished natural English. If they speak Urdu or Roman Urdu, reply warmly in Roman Urdu/Urdu.
+3. Keep responses helpful, direct, and concise (do not write overly long walls of text unless the customer asks for full pricing breakdowns).
+4. For price quotes, guide them to share their design artwork directly in chat, or via email (admin@aacreativeemb.com) or WhatsApp (+44 7462 23 8732).
+5. If you do not have enough info or confidence is low, set shouldEscalate: true.
 6. Calculate a confidence score between 0 and 100 based on how accurately the question is answered by the business knowledge.
 
 Respond STRICTLY in JSON format matching the schema provided.`;
@@ -227,14 +233,14 @@ function getFallbackAiResponse(userMessageText: string, previousMessages: Messag
   const lower = userMessageText.toLowerCase();
   const lang = detectLanguage(userMessageText);
 
-  let resp = "Thank you for contacting AA Creative Embroidery UK Ltd! Our AI digitizing assistant is checking your inquiry.";
+  let resp = "Hello! Thanks for reaching out to AA Creative Embroidery. How can I assist you with your digitizing or vector project today?";
 
   if (lower.includes('quote') || lower.includes('price') || lower.includes('cost') || lower.includes('rate')) {
-    resp = "Our standard digitizing rates start from £4 to £8 ($5-$10) for left chest and cap logos with 2-6 hour express turnaround. Send your logo image to admin@aacreativeemb.com or WhatsApp (+44 7462 23 8732) for an instant quote!";
+    resp = "Our standard digitizing rates start from £4 / $5 for cap and left chest logos with 2-6 hour express turnaround. Feel free to share your artwork here, email admin@aacreativeemb.com, or WhatsApp (+44 7462 23 8732) for an instant quote!";
   } else if (lower.includes('format') || lower.includes('dst') || lower.includes('pes') || lower.includes('emb')) {
-    resp = "We deliver Tajima (DST), Brother (PES), Wilcom (EMB source file), Melco (EXP/CND), Janome (JEF), Husqvarna (HUS), and Vector (AI, EPS, SVG, PDF) files with full PDF stitch-out proof sheets!";
+    resp = "We provide Tajima DST, Brother PES, Wilcom EMB source files, Melco EXP, Janome JEF, and high-res vector files (AI/EPS) along with full PDF stitch proof sheets!";
   } else if (lower.includes('turnaround') || lower.includes('time') || lower.includes('fast') || lower.includes('rush')) {
-    resp = "Standard digitizing delivery is 6 to 12 hours. Express rush delivery is available in 2 to 4 hours!";
+    resp = "Our standard delivery turnaround is 2 to 6 hours, with express rush service available in 2 hours!";
   }
 
   return {
