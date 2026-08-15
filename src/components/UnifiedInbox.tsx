@@ -16,6 +16,8 @@ import {
   Search,
   Zap,
   CheckCircle2,
+  XCircle,
+  RefreshCw,
   Headphones,
   Paperclip,
   MoreVertical,
@@ -232,7 +234,7 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({
                 <p className="text-[11px] text-slate-500">{activeConversation.sourceDetail}</p>
               </div>
 
-              {/* AI Handoff Toggle */}
+              {/* AI Handoff & Close Chat Controls */}
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => onToggleAi(!activeConversation.isAiHandling)}
@@ -254,6 +256,30 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({
                     </>
                   )}
                 </button>
+
+                {activeConversation.status !== 'resolved' ? (
+                  <button
+                    onClick={() => {
+                      onChangeStatus('resolved');
+                    }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition shadow-2xs"
+                    title="Close / Resolve this chat session"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 text-rose-600" />
+                    <span>Close Chat</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      onChangeStatus('open');
+                    }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition"
+                    title="Re-open this chat session"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Re-open Chat</span>
+                  </button>
+                )}
               </div>
             </div>
 

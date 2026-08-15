@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   MessageSquare,
   Bot,
@@ -13,9 +13,13 @@ import {
   ShieldCheck,
   Building2,
   Sparkles,
-  LogOut
+  LogOut,
+  Volume2,
+  VolumeX,
+  Bell
 } from 'lucide-react';
 import { Property, User } from '../types';
+import { soundFx } from '../utils/audio';
 
 interface HeaderProps {
   properties: Property[];
@@ -93,6 +97,16 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Sound Ding Alert Toggle & Test button */}
+          <button
+            onClick={() => soundFx.playDing('visitor')}
+            className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-2.5 py-1.5 rounded-md text-xs font-medium transition shadow-xs"
+            title="Play 1-Second Ding Tone for Visitor Alert"
+          >
+            <Bell className="w-3.5 h-3.5 text-blue-400" />
+            <span className="hidden sm:inline">1s Ding Sound</span>
+          </button>
+
           {/* Embed snippet button */}
           <button
             onClick={onOpenEmbedModal}

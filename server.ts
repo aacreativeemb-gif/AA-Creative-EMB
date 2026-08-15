@@ -341,6 +341,123 @@ async function startServer() {
     });
   });
 
+  // Cache to debounce visitor arrival emails (1 alert per visitor per 10 mins)
+  const recentVisitorNotified: Record<string, number> = {};
+
+  // Track New Website Visitor on Page Load & Dispatch Real Email Alert
+  app.post('/api/visitor/track', async (req, res) => {
+    try {
+      const { visitorId, pageUrl, referrer, visitorName, visitorEmail } = req.body;
+      const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || '198.51.100.1';
+
+      // Geolocation heuristic
+      let country = 'United Kingdom';
+      let city = 'London';
+      let flag = '🇬🇧';
+
+      if (clientIp.startsWith('182.') || clientIp.startsWith('39.') || clientIp.startsWith('103.')) {
+        country = 'Pakistan';
+        city = 'Karachi';
+        flag = '🇵🇰';
+      } else if (clientIp.startsWith('104.') || clientIp.startsWith('66.') || clientIp.startsWith('172.')) {
+        country = 'United States';
+        city = 'Dallas, TX';
+        flag = '🇺🇸';
+      }
+
+      const userAgent = req.headers['user-agent'] || '';
+      const browser = userAgent.includes('Firefox') ? 'Firefox' : userAgent.includes('Edg') ? 'Edge' : userAgent.includes('Safari') && !userAgent.includes('Chrome') ? 'Safari' : 'Chrome';
+      const os = userAgent.includes('Windows') ? 'Windows 11' : userAgent.includes('Mac') ? 'macOS' : userAgent.includes('Android') ? 'Android' : userAgent.includes('iPhone') ? 'iOS' : 'Linux';
+      const device = userAgent.includes('Mobile') || userAgent.includes('iPhone') || userAgent.includes('Android') ? 'Mobile' : 'Desktop';
+
+      let visitor = globalStore.visitors.find(v => v.id === visitorId || (v.ip === clientIp && v.status === 'online'));
+      let isBrandNewVisitor = false;
+
+      if (!visitor) {
+        isBrandNewVisitor = true;
+        visitor = {
+          id: visitorId || `vis_${Date.now()}`,
+          propertyId: 'prop_1',
+          name: visitorName || 'Website Visitor',
+          email: visitorEmail || 'visitor@example.com',
+          ip: clientIp,
+          location: { country, city, flag },
+          browser,
+          os,
+          device,
+          currentUrl: pageUrl || 'https://aacreativeemb.com/',
+          landingPage: pageUrl || 'https://aacreativeemb.com/',
+          referrer: referrer || 'Direct / Organic',
+          visitsCount: 1,
+          pagesViewed: 1,
+          timeOnSiteSeconds: 5,
+          status: 'online',
+          lastActiveAt: new Date().toISOString(),
+          tags: ['Active Visitor'],
+          notes: [`Arrived via ${referrer || 'Direct'}`]
+        };
+        globalStore.visitors.unshift(visitor);
+      } else {
+        visitor.status = 'online';
+        visitor.lastActiveAt = new Date().toISOString();
+        visitor.pagesViewed += 1;
+        if (pageUrl) visitor.currentUrl = pageUrl;
+      }
+
+      // Check if we should dispatch immediate Email Notification
+      const lastAlertTime = recentVisitorNotified[visitor.id] || recentVisitorNotified[clientIp] || 0;
+      const now = Date.now();
+      const shouldSendEmailAlert = (now - lastAlertTime > 10 * 60 * 1000) || isBrandNewVisitor;
+
+      if (shouldSendEmailAlert) {
+        recentVisitorNotified[visitor.id] = now;
+        recentVisitorNotified[clientIp] = now;
+
+        sendAdminEmailNotification({
+          to: 'aacreativeemb@gmail.com',
+          subject: `👀 [Live Alert] New Visitor on AA Creative Embroidery (${flag} ${country})`,
+          text: `Hello Admin,\n\nA new visitor just landed on your website!\n\nLocation: ${flag} ${city}, ${country}\nIP Address: ${clientIp}\nActive URL: ${visitor.currentUrl}\nReferrer: ${visitor.referrer}\nDevice: ${device} (${browser} on ${os})\nTime: ${new Date().toLocaleString()}\n\nOpen live support chat: https://chat.aacreativeemb.com\n\nAA Creative Embroidery UK`,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #0f172a; color: #ffffff; padding: 24px; border-radius: 12px; border: 1px solid #1e293b;">
+              <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #334155; padding-bottom: 14px; margin-bottom: 16px;">
+                <h3 style="color: #38bdf8; margin: 0; font-size: 18px;">👀 New Live Website Visitor</h3>
+                <span style="background: #065f46; color: #34d399; font-size: 11px; padding: 4px 8px; border-radius: 6px; font-weight: bold;">LIVE NOW</span>
+              </div>
+              
+              <p style="color: #cbd5e1; font-size: 14px; margin: 0 0 16px 0;">
+                A new user just arrived on <strong>AA Creative Embroidery</strong>.
+              </p>
+
+              <div style="background: #1e293b; padding: 16px; border-radius: 8px; font-size: 13px; line-height: 1.6; color: #f1f5f9; margin-bottom: 20px;">
+                <p style="margin: 0 0 6px 0;"><strong>🌍 Location:</strong> ${flag} ${city}, ${country}</p>
+                <p style="margin: 0 0 6px 0;"><strong>🌐 IP Address:</strong> <code>${clientIp}</code></p>
+                <p style="margin: 0 0 6px 0;"><strong>🔗 Active Page:</strong> <a href="${visitor.currentUrl}" style="color: #818cf8; text-decoration: none;">${visitor.currentUrl}</a></p>
+                <p style="margin: 0 0 6px 0;"><strong>🧭 Traffic Source / Referrer:</strong> ${visitor.referrer}</p>
+                <p style="margin: 0 0 6px 0;"><strong>💻 Device & Browser:</strong> ${device} • ${browser} on ${os}</p>
+                <p style="margin: 0;"><strong>⏰ Arrival Time:</strong> ${new Date().toLocaleString()}</p>
+              </div>
+
+              <div style="text-align: center;">
+                <a href="https://chat.aacreativeemb.com" style="display: inline-block; background: #4f46e5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; font-size: 14px;">
+                  🚀 Open Live Chat & Monitor Visitor
+                </a>
+              </div>
+            </div>
+          `
+        });
+      }
+
+      return res.json({
+        success: true,
+        visitor,
+        isNew: isBrandNewVisitor
+      });
+    } catch (err: any) {
+      console.error('Error tracking visitor:', err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
   // Visitor sends message
   app.post('/api/visitor/message', async (req, res) => {
     try {
@@ -1148,6 +1265,20 @@ async function startServer() {
     conversationId = 'conv_' + Math.random().toString(36).substr(2, 9);
     localStorage.setItem(storageKeyConv, conversationId);
   }
+
+  // Ping Server to Log Live Visitor & Dispatch Instant Admin Email Alert
+  try {
+    fetch(serverUrl + '/api/visitor/track', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        visitorId: visitorId,
+        pageUrl: window.location.href,
+        referrer: document.referrer || 'Direct Website Visit',
+        pageTitle: document.title
+      })
+    }).catch(function() {});
+  } catch(e) {}
 
   var savedMsgs = [];
   try {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Header } from './components/Header';
 import { VisitorWidget } from './components/VisitorWidget';
 import { UnifiedInbox } from './components/UnifiedInbox';
@@ -12,6 +12,8 @@ import { AnalyticsView } from './components/AnalyticsView';
 import { SettingsView } from './components/SettingsView';
 import { WidgetEmbedModal } from './components/WidgetEmbedModal';
 import { AdminAuth } from './components/AdminAuth';
+import { soundFx } from './utils/audio';
+import { Bell, Volume2, X, Users, MessageSquare } from 'lucide-react';
 
 import {
   Property,
@@ -67,6 +69,12 @@ export default function App() {
   const [showEmbedModal, setShowEmbedModal] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // Sound Notification & Real-time Live Visitor Alert State
+  const prevVisitorCountRef = useRef<number | null>(null);
+  const knownVisitorIdsRef = useRef<Set<string>>(new Set());
+  const [liveToast, setLiveToast] = useState<{ title: string; subtitle: string; time: string; visitorId?: string } | null>(null);
+  const [isAudioMuted, setIsAudioMuted] = useState(false);
+
   // Fetch full state from backend Express server
   const fetchState = async () => {
     try {
@@ -84,7 +92,31 @@ export default function App() {
       }
 
       setDepartments(data.departments || []);
-      setVisitors(data.visitors || []);
+      
+      const newVisitorsList: Visitor[] = data.visitors || [];
+      
+      // Sound alert trigger if new visitor arrives while admin dashboard is open
+      if (prevVisitorCountRef.current !== null && newVisitorsList.length > 0) {
+        const brandNewVisitor = newVisitorsList.find(v => !knownVisitorIdsRef.current.has(v.id));
+        if (brandNewVisitor) {
+          // Play 1-Second Ding Tone
+          soundFx.playDing('visitor');
+          
+          // Show interactive live toast
+          setLiveToast({
+            title: `🔔 New Visitor Arrived on Website!`,
+            subtitle: `${brandNewVisitor.name} (${brandNewVisitor.location.flag} ${brandNewVisitor.location.city}, ${brandNewVisitor.location.country}) is browsing ${brandNewVisitor.currentUrl}`,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            visitorId: brandNewVisitor.id
+          });
+        }
+      }
+
+      // Record known IDs
+      newVisitorsList.forEach(v => knownVisitorIdsRef.current.add(v.id));
+      prevVisitorCountRef.current = newVisitorsList.length;
+
+      setVisitors(newVisitorsList);
       setConversations(data.conversations || []);
       setMessages(data.messages || {});
       setTickets(data.tickets || []);
@@ -107,7 +139,7 @@ export default function App() {
 
   useEffect(() => {
     fetchState();
-    const interval = setInterval(fetchState, 5000);
+    const interval = setInterval(fetchState, 4000);
     return () => clearInterval(interval);
   }, []);
 
@@ -174,6 +206,27 @@ export default function App() {
       if (data.success) fetchState();
     } catch (e) {
       console.error('Error toggling AI mode:', e);
+    }
+  };
+
+  // Close / Resolve Chat
+  const handleCloseChat = async (visitorIdOrConvId: string) => {
+    try {
+      let convId = visitorIdOrConvId;
+      const conv = conversations.find(c => c.visitorId === visitorIdOrConvId || c.id === visitorIdOrConvId);
+      if (conv) convId = conv.id;
+
+      await fetch('/api/conversations/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: convId,
+          status: 'resolved'
+        })
+      });
+      fetchState();
+    } catch (e) {
+      console.error('Error closing chat:', e);
     }
   };
 
@@ -377,11 +430,13 @@ export default function App() {
         {activeTab === 'visitor_tracker' && (
           <VisitorTracker
             visitors={visitors}
+            conversations={conversations}
             onStartChatWithVisitor={vis => {
               const conv = conversations.find(c => c.visitorId === vis.id);
               if (conv) setActiveConversationId(conv.id);
               setActiveTab('unified_inbox');
             }}
+            onCloseChat={handleCloseChat}
           />
         )}
 
@@ -455,6 +510,53 @@ export default function App() {
           />
         )}
       </main>
+
+      {/* Floating Live Visitor Sound & Arrival Notification Toast */}
+      {liveToast && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-sm bg-slate-900 border border-blue-500/50 shadow-2xl rounded-2xl p-4 text-white animate-bounce-short">
+          <div className="flex items-start justify-between gap-3">
+            <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white shrink-0 shadow-lg shadow-blue-500/30">
+              <Bell className="w-5 h-5 animate-wiggle" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between">
+                <p className="font-bold text-sm text-blue-300 flex items-center gap-1.5">
+                  <span>{liveToast.title}</span>
+                </p>
+                <span className="text-[10px] text-slate-400 font-mono">{liveToast.time}</span>
+              </div>
+              <p className="text-xs text-slate-200 mt-1 line-clamp-2 leading-relaxed">
+                {liveToast.subtitle}
+              </p>
+
+              <div className="flex items-center gap-2 mt-3 pt-2 border-t border-slate-800">
+                <button
+                  onClick={() => {
+                    setActiveTab('visitor_tracker');
+                    setLiveToast(null);
+                  }}
+                  className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition flex items-center gap-1 shadow-xs"
+                >
+                  <Users className="w-3.5 h-3.5" /> View Visitor
+                </button>
+                <button
+                  onClick={() => soundFx.playDing('visitor')}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-2.5 py-1.5 rounded-lg transition flex items-center gap-1"
+                  title="Test Sound Tone"
+                >
+                  <Volume2 className="w-3.5 h-3.5 text-blue-400" /> Ding 1s
+                </button>
+                <button
+                  onClick={() => setLiveToast(null)}
+                  className="text-slate-400 hover:text-white p-1 rounded-lg ml-auto text-xs"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showEmbedModal && (
         <WidgetEmbedModal
