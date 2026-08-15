@@ -44,41 +44,7 @@ export async function sendAdminEmailNotification({
   const rawHost = (config.smtpHost || process.env.SMTP_HOST || 'smtp.gmail.com').trim();
   const resendApiKey = (config.resendApiKey || process.env.RESEND_API_KEY || '').trim();
 
-  // 1. Try Resend API if API Key provided
-  if (resendApiKey) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-      const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${resendApiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          from: 'AA Creative Support <onboarding@resend.dev>',
-          to: [to],
-          subject,
-          text,
-          html
-        }),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-
-      if (res.ok) {
-        console.log(`[RESEND API EMAIL SENT] Dispatched to ${to}: "${subject}"`);
-        return { success: true, method: 'Resend API (HTTP 443)' };
-      } else {
-        const errorData: any = await res.json().catch(() => ({}));
-        console.error(`[RESEND ERROR] Failed:`, errorData);
-      }
-    } catch (err: any) {
-      console.error(`[RESEND EXCEPTION]`, err.message);
-    }
-  }
-
-  // 2. Try SMTP with Gmail App Password (forced IPv4)
+  // 1. Try SMTP with Gmail App Password first (forced IPv4)
   if (smtpUser && smtpPass) {
     // Resolve pure IPv4 address or fallback to hostname
     const resolvedIpv4 = await getIpv4Host(rawHost);
@@ -149,16 +115,56 @@ export async function sendAdminEmailNotification({
         return { success: true, method: 'Gmail SMTP (Port 587 TLS)' };
       } catch (err587: any) {
         console.error(`[SMTP ERROR] IPv4 Port 465 & 587 failed:`, err587.message);
-        return {
-          success: false,
-          method: 'smtp_failed',
-          error: `Gmail Connection Failed: ${err587.message}. Tip: If your cloud host blocks SMTP ports, you can also add a free Resend API Key.`
-        };
+        console.warn(`[SMTP FAILED] Falling back to Resend API if configured...`);
       }
     }
   }
 
-  // 3. Fallback when credentials are not yet set
+  // 2. Fallback to Resend API if Gmail SMTP failed or credentials not set
+  if (resendApiKey) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${resendApiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          from: 'AA Creative Support <onboarding@resend.dev>',
+          to: [to],
+          subject,
+          text,
+          html
+        }),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        console.log(`[RESEND API EMAIL SENT - FALLBACK] Dispatched to ${to}: "${subject}"`);
+        return { success: true, method: 'Resend API (Fallback, HTTP 443)' };
+      } else {
+        const errorData: any = await res.json().catch(() => ({}));
+        console.error(`[RESEND ERROR] Failed:`, errorData);
+        return {
+          success: false,
+          method: 'resend_failed',
+          error: `Both Gmail SMTP and Resend API failed. Resend error: ${JSON.stringify(errorData)}`
+        };
+      }
+    } catch (err: any) {
+      console.error(`[RESEND EXCEPTION]`, err.message);
+      return {
+        success: false,
+        method: 'resend_exception',
+        error: `Both Gmail SMTP and Resend API failed. Resend error: ${err.message}`
+      };
+    }
+  }
+
+  // 3. Fallback when no credentials are set at all
   console.log(`\n=============================================================`);
   console.log(`[EMAIL DISPATCH NOTICE - Credentials needed for actual delivery]`);
   console.log(`To: ${to}`);
