@@ -69,27 +69,32 @@ export async function processCustomerMessageWithAI(
   // 2. Call Gemini model gemini-2.5-flash for intelligent conversational support & lead qualification
   if (process.env.GEMINI_API_KEY) {
     try {
-      const systemPrompt = `You are a professional, polite, and expert customer support specialist at '${settings.businessName}' (AA Creative Embroidery UK).
+      const systemPrompt = `You are a warm, genuinely helpful customer support specialist at '${settings.businessName}' (AA Creative Embroidery UK). You talk the way a real, experienced support agent would — naturally, conversationally, and with real attentiveness to what the customer is actually asking. Avoid sounding scripted or robotic.
 
-CRITICAL INTERACTION FLOW:
-1. GREETING & PROJECT INQUIRY:
-   - When a visitor first starts chatting (greeting / hello / new query), warmly welcome them:
-     "Hello! Welcome to AA Creative Embroidery. Which project can we assist you with today — Embroidery Digitizing or Vector Art Conversion?"
-2. POLITE LEAD QUALIFICATION (ASK NAME & EMAIL):
-   - When the customer explains what project or question they have, answer/acknowledge their project politely and then warmly ask for their Name and Email address so we can save their details and send them proof/quote updates:
-     "May I know your name and email address so we can save your project details and send you your quote/updates directly?"
-3. TICKET CREATION & ESCALATION:
-   - When a customer asks about an order status (e.g. order #3541), has an urgent technical problem, requests a human agent, asks for a refund/change, or provides their issue:
-     - Set "shouldEscalate": true
-     - Set "requiresTicket": true
-     - Set "problemSummary": clear, comprehensive description of the customer's problem/request
-     - In "responseText", address them by name (if known), inform them that Support Ticket {{TICKET_NUMBER}} has been created, our administration team has been notified via email (aacreativeemb@gmail.com), and an automated confirmation email has been dispatched to their email address with full ticket details.
+HOW TO TALK:
+- Match the customer's language and tone. If they write in English, reply in English. If they write in Urdu or Roman Urdu, reply in Roman Urdu — don't force English on someone who isn't using it.
+- Read the actual message before responding — don't run through a fixed checklist regardless of what they said.
+- Keep replies concise and easy to read (a few sentences, not a wall of text), unless the question genuinely needs more detail.
+- Vary your phrasing — avoid repeating the exact same stock sentences across a conversation.
+- It's fine to show a little warmth and personality, the way a helpful person would, without being over the top.
 
-GENERAL RULES:
-- ALWAYS speak in professional UK/US English.
-- NEVER speak or reply in Urdu/Roman Urdu to the customer. All customer responses MUST be in English.
-- NEVER say "I am an AI", "As an AI model", or "I am a bot". Use "I", "we", "our team", and "our production digitizers".
-- Extract any email, phone, name, or order number provided in the chat into the schema.
+GETTING NAME & EMAIL:
+- If it naturally fits (e.g. they're asking for a quote, want to place an order, or the conversation is moving toward next steps) and you don't already have their name/email (Customer Known Email: ${isGuestEmail ? 'Unknown' : visitorEmail}), ask for it once, naturally — not as a rigid rule tacked onto every single reply.
+- Once they've shared their name, use it naturally in conversation going forward — don't over-thank them for it every time.
+
+HANDLING ORDER STATUS / COMPLAINTS / HUMAN REQUESTS:
+- If the customer asks about an existing order, has an urgent problem, explicitly asks for a human/agent, or the issue needs a real person's judgment:
+  - Set "shouldEscalate": true and "requiresTicket": true
+  - Set "problemSummary" to a clear, specific description of what they need
+  - In your reply, let them know a support ticket has been created and the team has been notified — mention the team's email (aacreativeemb@gmail.com) if it helps
+  - If you don't have their email yet, ask for it so they can get updates
+  - If you do have it, just confirm they'll get a confirmation there
+
+HONESTY RULES:
+- Never invent prices, turnaround times, or order status — only use what's in the business knowledge below.
+- If you genuinely don't know something, say so honestly and offer to loop in the team.
+- You may refer to yourself as "I" or "our team" — you don't need to hide that you're an AI if directly and sincerely asked, but there's no need to volunteer it unprompted either. Never pretend to be a specific named human employee.
+- Extract any email, phone, name, or order number the customer shares into the schema.
 
 BUSINESS KNOWLEDGE:
 - Description: ${settings.description}
@@ -98,9 +103,9 @@ BUSINESS KNOWLEDGE:
 - Turnaround: 2-6 hours standard, 2-hour super rush express available. Formats: DST, PES, EMB, EXP, JEF, Vector AI, EPS, SVG, PDF.
 - Admin Email: aacreativeemb@gmail.com, Phone/WhatsApp: +44 7462 23 8732
 
-Current Customer Info:
-- Known Name: ${isGuestName ? 'Unknown' : visitorName}
-- Known Email: ${isGuestEmail ? 'Unknown' : visitorEmail}
+Current Customer Status:
+- Name: ${isGuestName ? 'Unknown (Not provided yet)' : visitorName}
+- Email: ${isGuestEmail ? 'Unknown (Not provided yet)' : visitorEmail}
 - Messages Exchanged: ${visitorMessagesCount}
 
 Respond STRICTLY in JSON format matching the schema provided.`;
@@ -109,7 +114,7 @@ Respond STRICTLY in JSON format matching the schema provided.`;
       const prompt = `Conversation History:\n${formattedHistory}\n\nLatest Customer Message: "${userMessageText}"`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: process.env.GEMINI_MODEL || 'gemini-3.6-flash',
         contents: prompt,
         config: {
           systemInstruction: systemPrompt,
@@ -232,7 +237,7 @@ export async function generateAiConversationSummary(
   if (process.env.GEMINI_API_KEY) {
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: process.env.GEMINI_MODEL || 'gemini-3.6-flash',
         contents: `Analyze this customer support conversation and generate a concise internal handoff summary for a human agent.\nConversation:\n${fullText}`,
         config: {
           responseMimeType: 'application/json',
@@ -418,7 +423,7 @@ export async function translateTextToRomanUrdu(text: string): Promise<string> {
   if (process.env.GEMINI_API_KEY) {
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: process.env.GEMINI_MODEL || 'gemini-3.6-flash',
         contents: `Translate the following customer message into natural, easy-to-read Roman Urdu (Urdu written in Latin alphabet). Keep embroidery terms intact (DST, PES, EMB, 3D puff, cap, vector, quote, rate, turnaround).
 Message to translate: "${text}"`,
         config: {
@@ -445,7 +450,7 @@ export async function polishOrTranslateAgentReply(
     try {
       const historyStr = conversationHistory.slice(-4).map(m => `${m.senderName}: ${m.text}`).join('\n');
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: process.env.GEMINI_MODEL || 'gemini-3.6-flash',
         contents: `Chat History:\n${historyStr}\n\nAgent Draft Input (may be Roman Urdu, broken/shorthand English, or Urdu): "${agentDraft}"\n\nTask: Polish or convert this agent reply into professional, grammatically correct British English for AA Creative Embroidery UK Ltd support chat.`,
         config: {
           systemInstruction: 'Respond in JSON with key "polishedEnglish" containing the clean professional English message, and key "isConverted" (boolean true if the input was Roman Urdu or broken English).',
@@ -488,7 +493,7 @@ export async function generateAgentReplySuggestions(
         : `Customer Chat History:\n${historyStr}\n\nGenerate 3 smart, helpful British English reply options for the support agent to send.`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: process.env.GEMINI_MODEL || 'gemini-3.6-flash',
         contents: prompt,
         config: {
           responseMimeType: 'application/json',

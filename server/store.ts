@@ -16,6 +16,23 @@ import {
   AuditLog,
   PlatformAnalytics
 } from '../src/types';
+import fs from 'fs';
+import path from 'path';
+
+// Data survives restarts by writing to a JSON file on disk instead of
+// living only in memory. Saved on a short interval and on graceful
+// shutdown; loaded back in when the server boots.
+const DATA_DIR = path.join(process.cwd(), 'data');
+const DB_PATH = path.join(DATA_DIR, 'db.json');
+
+// Fields that get persisted to disk. Deliberately excludes things that
+// should always start fresh (e.g. in-memory OTP codes).
+const PERSISTED_FIELDS = [
+  'properties', 'users', 'departments', 'visitors', 'conversations', 'messages',
+  'tickets', 'kbCategories', 'kbArticles', 'aiSettings', 'qcFeedbacks',
+  'unansweredQuestions', 'triggers', 'cannedResponses', 'auditLogs',
+  'adminPassword', 'trustedDeviceIds', 'emailConfig', 'analytics'
+] as const;
 
 export class AppStore {
   properties: Property[] = [
@@ -653,7 +670,45 @@ A: Type "agent", "human digitizer", WhatsApp (+44 7462 23 8732) or email us at a
       ticket: 4
     }
   };
+
+  // ---------- Persistence ----------
+  persist() {
+    try {
+      if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+      const snapshot: Record<string, unknown> = {};
+      for (const field of PERSISTED_FIELDS) {
+        snapshot[field] = (this as any)[field];
+      }
+      fs.writeFileSync(DB_PATH, JSON.stringify(snapshot));
+    } catch (err) {
+      console.error('Failed to persist store:', err);
+    }
+  }
+
+  hydrate() {
+    try {
+      if (!fs.existsSync(DB_PATH)) return;
+      const raw = fs.readFileSync(DB_PATH, 'utf8');
+      if (!raw.trim()) return;
+      const saved = JSON.parse(raw);
+      for (const field of PERSISTED_FIELDS) {
+        if (saved[field] !== undefined) {
+          (this as any)[field] = saved[field];
+        }
+      }
+      console.log('Store hydrated from data/db.json');
+    } catch (err) {
+      console.error('Failed to hydrate store (starting fresh):', err);
+    }
+  }
 }
 
 export const globalStore = new AppStore();
+globalStore.hydrate();
+
+// Periodic autosave (cheap enough to run unconditionally) plus a
+// best-effort save on graceful shutdown signals.
+setInterval(() => globalStore.persist(), 5000);
+process.on('SIGTERM', () => { globalStore.persist(); process.exit(0); });
+process.on('SIGINT', () => { globalStore.persist(); process.exit(0); });
 
