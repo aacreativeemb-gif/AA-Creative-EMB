@@ -642,7 +642,436 @@ async function startServer() {
     res.setHeader('Content-Type', 'application/javascript');
     res.send(`
 (function() {
-  console.log("ABC Store Live Chat & AI Support Widget Initialized.");
+  if (window.__AA_EMB_WIDGET_LOADED__) return;
+  window.__AA_EMB_WIDGET_LOADED__ = true;
+
+  var scriptEl = document.currentScript || (function() {
+    var scripts = document.getElementsByTagName('script');
+    return scripts[scripts.length - 1];
+  })();
+  
+  var serverUrl = 'https://chat.aacreativeemb.com';
+  if (scriptEl && scriptEl.src) {
+    try {
+      var urlObj = new URL(scriptEl.src);
+      serverUrl = urlObj.origin;
+    } catch(e) {}
+  }
+
+  var storageKeyVisitor = 'aa_emb_vis_id';
+  var storageKeyConv = 'aa_emb_conv_id';
+  var storageKeyMsgs = 'aa_emb_msgs';
+
+  var visitorId = localStorage.getItem(storageKeyVisitor);
+  if (!visitorId) {
+    visitorId = 'vis_' + Math.random().toString(36).substr(2, 9);
+    localStorage.setItem(storageKeyVisitor, visitorId);
+  }
+
+  var conversationId = localStorage.getItem(storageKeyConv);
+  if (!conversationId) {
+    conversationId = 'conv_' + Math.random().toString(36).substr(2, 9);
+    localStorage.setItem(storageKeyConv, conversationId);
+  }
+
+  var savedMsgs = [];
+  try {
+    savedMsgs = JSON.parse(localStorage.getItem(storageKeyMsgs) || '[]');
+  } catch(e) {
+    savedMsgs = [];
+  }
+
+  if (savedMsgs.length === 0) {
+    savedMsgs.push({
+      id: 'welcome_1',
+      sender: 'ai',
+      text: 'Assalam o Alaikum & Welcome to AA Creative Embroidery UK! 🧵\\nHow can I help you today? Ask about digitizing rates, turnaround times, or vector art conversion.',
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    });
+  }
+
+  // Inject Styles
+  var style = document.createElement('style');
+  style.innerHTML = \`
+    #aa-chat-launcher {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 2147483647;
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+      box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.5), 0 8px 10px -6px rgba(79, 70, 229, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      border: 2px solid rgba(255, 255, 255, 0.2);
+    }
+    #aa-chat-launcher:hover {
+      transform: scale(1.08) translateY(-2px);
+      box-shadow: 0 15px 30px -5px rgba(79, 70, 229, 0.6);
+    }
+    #aa-chat-launcher svg {
+      width: 28px;
+      height: 28px;
+      fill: #ffffff;
+      transition: transform 0.3s ease;
+    }
+    #aa-chat-badge {
+      position: absolute;
+      top: -2px;
+      right: -2px;
+      width: 14px;
+      height: 14px;
+      background: #10b981;
+      border: 2.5px solid #ffffff;
+      border-radius: 50%;
+    }
+    #aa-chat-box {
+      position: fixed;
+      bottom: 96px;
+      right: 24px;
+      width: 380px;
+      max-width: calc(100vw - 32px);
+      height: 560px;
+      max-height: calc(100vh - 120px);
+      background: #ffffff;
+      border-radius: 18px;
+      box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.05);
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
+      z-index: 2147483647;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      animation: aaSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    @keyframes aaSlideUp {
+      from { opacity: 0; transform: translateY(20px) scale(0.96); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    #aa-chat-header {
+      background: linear-gradient(135deg, #312e81 0%, #4f46e5 100%);
+      color: #ffffff;
+      padding: 16px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    .aa-agent-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .aa-avatar {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 16px;
+      border: 1.5px solid rgba(255,255,255,0.3);
+    }
+    .aa-agent-name {
+      font-weight: 600;
+      font-size: 15px;
+      letter-spacing: -0.01em;
+      margin: 0;
+      line-height: 1.2;
+    }
+    .aa-agent-status {
+      font-size: 12px;
+      color: #a7f3d0;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin-top: 3px;
+    }
+    .aa-status-dot {
+      width: 7px;
+      height: 7px;
+      background: #10b981;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    #aa-close-btn {
+      background: none;
+      border: none;
+      color: #ffffff;
+      cursor: pointer;
+      opacity: 0.8;
+      padding: 4px;
+      transition: opacity 0.2s;
+    }
+    #aa-close-btn:hover {
+      opacity: 1;
+    }
+    #aa-messages-container {
+      flex: 1;
+      padding: 16px;
+      overflow-y: auto;
+      background: #f8fafc;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .aa-msg {
+      max-width: 82%;
+      padding: 11px 14px;
+      border-radius: 14px;
+      font-size: 13.5px;
+      line-height: 1.45;
+      word-break: break-word;
+    }
+    .aa-msg-ai {
+      align-self: flex-start;
+      background: #ffffff;
+      color: #1e293b;
+      border: 1px solid #e2e8f0;
+      border-bottom-left-radius: 4px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    .aa-msg-visitor {
+      align-self: flex-end;
+      background: #4f46e5;
+      color: #ffffff;
+      border-bottom-right-radius: 4px;
+    }
+    .aa-msg-time {
+      font-size: 10px;
+      margin-top: 4px;
+      opacity: 0.65;
+      text-align: right;
+    }
+    #aa-quick-actions {
+      padding: 8px 12px;
+      background: #ffffff;
+      border-top: 1px solid #f1f5f9;
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      white-space: nowrap;
+    }
+    .aa-pill {
+      background: #f1f5f9;
+      color: #475569;
+      border: 1px solid #e2e8f0;
+      padding: 5px 10px;
+      border-radius: 12px;
+      font-size: 11.5px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+    .aa-pill:hover {
+      background: #e0e7ff;
+      color: #4338ca;
+      border-color: #c7d2fe;
+    }
+    #aa-input-bar {
+      padding: 12px 14px;
+      background: #ffffff;
+      border-top: 1px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #aa-text-input {
+      flex: 1;
+      border: 1px solid #cbd5e1;
+      border-radius: 20px;
+      padding: 9px 14px;
+      font-size: 13.5px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    #aa-text-input:focus {
+      border-color: #6366f1;
+    }
+    #aa-send-btn {
+      background: #4f46e5;
+      border: none;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      color: #ffffff;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+      flex-shrink: 0;
+    }
+    #aa-send-btn:hover {
+      background: #4338ca;
+    }
+    #aa-typing {
+      display: none;
+      align-self: flex-start;
+      font-size: 11.5px;
+      color: #64748b;
+      font-style: italic;
+      padding: 2px 8px;
+    }
+    @media (max-width: 480px) {
+      #aa-chat-box {
+        bottom: 0;
+        right: 0;
+        width: 100vw;
+        max-width: 100vw;
+        height: 100vh;
+        max-height: 100vh;
+        border-radius: 0;
+      }
+    }
+  \`;
+  document.head.appendChild(style);
+
+  // Create Launcher Element
+  var launcher = document.createElement('div');
+  launcher.id = 'aa-chat-launcher';
+  launcher.innerHTML = \`
+    <svg viewBox="0 0 24 24">
+      <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+    </svg>
+    <div id="aa-chat-badge"></div>
+  \`;
+  document.body.appendChild(launcher);
+
+  // Create Chat Box Element
+  var chatBox = document.createElement('div');
+  chatBox.id = 'aa-chat-box';
+  chatBox.innerHTML = \`
+    <div id="aa-chat-header">
+      <div class="aa-agent-info">
+        <div class="aa-avatar">AA</div>
+        <div>
+          <div class="aa-agent-name">AA Creative AI Support</div>
+          <div class="aa-agent-status"><span class="aa-status-dot"></span> Online (Urdu / English)</div>
+        </div>
+      </div>
+      <button id="aa-close-btn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+    <div id="aa-messages-container"></div>
+    <div id="aa-typing">AI Assistant is typing...</div>
+    <div id="aa-quick-actions">
+      <span class="aa-pill" data-q="What are your embroidery digitizing rates?">🧵 Digitizing Rates</span>
+      <span class="aa-pill" data-q="How long does logo digitizing take?">⚡ Turnaround Time</span>
+      <span class="aa-pill" data-q="Which stitch formats do you provide?">📁 Formats (DST/PES)</span>
+      <span class="aa-pill" data-q="I want a free quote for my embroidery design.">💬 Get Quote</span>
+    </div>
+    <form id="aa-input-bar">
+      <input type="text" id="aa-text-input" placeholder="Type your message in English or Urdu..." autocomplete="off" />
+      <button type="submit" id="aa-send-btn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+      </button>
+    </form>
+  \`;
+  document.body.appendChild(chatBox);
+
+  var msgContainer = chatBox.querySelector('#aa-messages-container');
+  var typingIndicator = chatBox.querySelector('#aa-typing');
+  var inputEl = chatBox.querySelector('#aa-text-input');
+  var formEl = chatBox.querySelector('#aa-input-bar');
+  var closeBtn = chatBox.querySelector('#aa-close-btn');
+
+  function renderMessages() {
+    msgContainer.innerHTML = '';
+    savedMsgs.forEach(function(m) {
+      var div = document.createElement('div');
+      div.className = 'aa-msg ' + (m.sender === 'visitor' ? 'aa-msg-visitor' : 'aa-msg-ai');
+      div.innerHTML = '<div>' + m.text.replace(/\\n/g, '<br/>') + '</div><div class="aa-msg-time">' + (m.time || '') + '</div>';
+      msgContainer.appendChild(div);
+    });
+    msgContainer.scrollTop = msgContainer.scrollHeight;
+  }
+
+  renderMessages();
+
+  var isOpen = false;
+  function toggleChat() {
+    isOpen = !isOpen;
+    chatBox.style.display = isOpen ? 'flex' : 'none';
+    if (isOpen) {
+      inputEl.focus();
+      msgContainer.scrollTop = msgContainer.scrollHeight;
+    }
+  }
+
+  launcher.addEventListener('click', toggleChat);
+  closeBtn.addEventListener('click', toggleChat);
+
+  // Quick Action Pills Click
+  chatBox.querySelectorAll('.aa-pill').forEach(function(pill) {
+    pill.addEventListener('click', function() {
+      var q = pill.getAttribute('data-q');
+      if (q) sendMessage(q);
+    });
+  });
+
+  // Handle Send Form
+  formEl.addEventListener('submit', function(e) {
+    e.preventDefault();
+    var val = inputEl.value.trim();
+    if (!val) return;
+    sendMessage(val);
+  });
+
+  function sendMessage(text) {
+    inputEl.value = '';
+    var userMsg = {
+      id: 'msg_' + Date.now(),
+      sender: 'visitor',
+      text: text,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    savedMsgs.push(userMsg);
+    localStorage.setItem(storageKeyMsgs, JSON.stringify(savedMsgs));
+    renderMessages();
+
+    typingIndicator.style.display = 'block';
+    msgContainer.scrollTop = msgContainer.scrollHeight;
+
+    fetch(serverUrl + '/api/visitor/message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        conversationId: conversationId,
+        visitorId: visitorId,
+        visitorName: 'Website Visitor',
+        text: text,
+        channel: 'website'
+      })
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      typingIndicator.style.display = 'none';
+      if (data && data.aiMessage) {
+        savedMsgs.push({
+          id: data.aiMessage.id,
+          sender: 'ai',
+          text: data.aiMessage.text,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        });
+        localStorage.setItem(storageKeyMsgs, JSON.stringify(savedMsgs));
+        renderMessages();
+      }
+    })
+    .catch(function(err) {
+      typingIndicator.style.display = 'none';
+      console.error('Chat error:', err);
+    });
+  }
+
 })();
     `);
   });
