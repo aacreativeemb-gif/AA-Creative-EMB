@@ -4,6 +4,7 @@ import { createServer as createViteServer } from 'vite';
 import { globalStore } from './server/store';
 import { processCustomerMessageWithAI, generateAiConversationSummary, translateTextToRomanUrdu, polishOrTranslateAgentReply, generateAgentReplySuggestions } from './server/aiEngine';
 import { Message, Conversation, Ticket } from './src/types';
+import { sendAdminEmailNotification } from './server/mailer';
 
 async function startServer() {
   const app = express();
@@ -111,21 +112,32 @@ async function startServer() {
 
     const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || '127.0.0.1';
 
-    console.log(`\n=============================================================`);
-    console.log(`[2FA SECURITY CODE DISPATCHED -> ${targetEmail}]`);
-    console.log(`Subject: 🔐 AA Creative Portal 2FA Verification Code: ${otpCode}`);
-    console.log(`Attempted Account: ${cleanEmail}`);
-    console.log(`Device ID: ${deviceId || 'New Unregistered Device'}`);
-    console.log(`IP Address: ${clientIp}`);
-    console.log(`Verification Code: ${otpCode} (Valid for 15 minutes)`);
-    console.log(`=============================================================\n`);
+    // Dispatch Real Email
+    sendAdminEmailNotification({
+      to: targetEmail,
+      subject: `🔐 AA Creative Support Portal Security Code: ${otpCode}`,
+      text: `Hello,\n\nA sign-in attempt was made to the AA Creative Support Portal.\n\nYour 6-Digit 2FA Verification Code: ${otpCode}\n\nDevice: ${deviceId || 'Web Browser'}\nIP: ${clientIp}\nDate: ${new Date().toUTCString()}\n\nThis code will expire in 15 minutes.\n\nIf you did not request this, please secure your account immediately.\n\nAA Creative Embroidery UK`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; background: #0f172a; color: #ffffff; padding: 24px; border-radius: 12px; border: 1px solid #1e293b;">
+          <h2 style="color: #6366f1; margin-top: 0;">AA Creative Support Security</h2>
+          <p style="color: #cbd5e1; font-size: 14px;">A sign-in attempt was detected for your account on a new device or browser.</p>
+          <div style="background: #1e293b; padding: 18px; border-radius: 8px; text-align: center; margin: 20px 0;">
+            <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #38bdf8; font-family: monospace;">${otpCode}</span>
+          </div>
+          <p style="color: #94a3b8; font-size: 12px;">This 6-digit code is valid for 15 minutes. Do not share this code with anyone.</p>
+          <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #334155; font-size: 11px; color: #64748b;">
+            IP Address: ${clientIp}<br/>
+            Time: ${new Date().toUTCString()}
+          </div>
+        </div>
+      `
+    });
 
     return res.json({
       success: false,
       requires2FA: true,
       email: targetEmail,
-      otpPreview: otpCode,
-      message: `A 6-digit verification code has been sent to ${targetEmail}.`
+      message: `A 6-digit verification code has been dispatched to ${targetEmail}.`
     });
   });
 
@@ -184,16 +196,25 @@ async function startServer() {
       type: 'reset'
     };
 
-    console.log(`\n=============================================================`);
-    console.log(`[PASSWORD RESET OTP DISPATCHED -> ${targetEmail}]`);
-    console.log(`Subject: 🔑 AA Creative Portal Password Reset Code: ${otpCode}`);
-    console.log(`Requested Email: ${email || targetEmail}`);
-    console.log(`Reset Code: ${otpCode} (Valid for 15 minutes)`);
-    console.log(`=============================================================\n`);
+    // Dispatch Real Email
+    sendAdminEmailNotification({
+      to: targetEmail,
+      subject: `🔑 AA Creative Support Portal Password Reset Code: ${otpCode}`,
+      text: `Hello,\n\nA password reset request was initiated for your AA Creative Support Admin account.\n\nYour 6-Digit Password Reset Code: ${otpCode}\n\nThis code will expire in 15 minutes.\n\nAA Creative Embroidery UK`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; background: #0f172a; color: #ffffff; padding: 24px; border-radius: 12px; border: 1px solid #1e293b;">
+          <h2 style="color: #6366f1; margin-top: 0;">Password Reset Request</h2>
+          <p style="color: #cbd5e1; font-size: 14px;">Use the 6-digit verification code below to reset your admin portal password.</p>
+          <div style="background: #1e293b; padding: 18px; border-radius: 8px; text-align: center; margin: 20px 0;">
+            <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #38bdf8; font-family: monospace;">${otpCode}</span>
+          </div>
+          <p style="color: #94a3b8; font-size: 12px;">Valid for 15 minutes. If you did not request a password reset, please ignore this email.</p>
+        </div>
+      `
+    });
 
     return res.json({
       success: true,
-      otpPreview: otpCode,
       message: `6-digit reset code has been sent to ${targetEmail}.`
     });
   });
@@ -399,7 +420,7 @@ async function startServer() {
           deliveryStatus: 'delivered',
           channel: conv.channel,
           confidenceScore: aiResult.confidenceScore,
-          languageDetected: aiResult.languageDetected,
+          languageDetected: 'English',
           isEscalationTrigger: aiResult.shouldEscalate
         };
 
@@ -407,35 +428,126 @@ async function startServer() {
         conv.lastMessageText = aiResult.aiResponseText;
         conv.lastMessageAt = aiMessage.timestamp;
 
-        // If AI determines escalation needed (human requested or low confidence)
+        // If AI determines escalation or ticket generation is needed
         if (aiResult.shouldEscalate && globalStore.aiSettings.humanHandoffEnabled) {
-          conv.isAiHandling = false;
-          conv.status = 'escalated';
-          conv.priority = 'urgent';
-
           if (aiResult.aiSummary) {
             conv.aiSummary = aiResult.aiSummary;
           } else {
-            conv.aiSummary = await generateAiConversationSummary(text, globalStore.messages[conv.id], aiResult.escalationReason || 'Customer requested human support.');
+            conv.aiSummary = await generateAiConversationSummary(text, globalStore.messages[conv.id], aiResult.escalationReason || 'Customer requested support.');
           }
 
-          // Assign available online agent if any
-          if (onlineAgents.length > 0 && !conv.assignedAgentId) {
-            conv.assignedAgentId = onlineAgents[0].id;
-          }
+          if (onlineAgents.length > 0) {
+            // Admin/agent is online -> Transfer chat
+            conv.isAiHandling = false;
+            conv.status = 'escalated';
+            conv.priority = 'urgent';
+            if (!conv.assignedAgentId) {
+              conv.assignedAgentId = onlineAgents[0].id;
+            }
 
-          const systemHandoffMsg: Message = {
-            id: `msg_${Date.now()}_sys`,
-            conversationId: conv.id,
-            senderType: 'system',
-            senderId: 'system',
-            senderName: 'System Handoff',
-            text: `⚡ Smart Escalation Triggered: ${aiResult.escalationReason || 'Conversation transferred to human support team.'}`,
-            timestamp: new Date().toISOString(),
-            deliveryStatus: 'delivered',
-            channel: conv.channel
-          };
-          globalStore.messages[conv.id].push(systemHandoffMsg);
+            const systemHandoffMsg: Message = {
+              id: `msg_${Date.now()}_sys`,
+              conversationId: conv.id,
+              senderType: 'system',
+              senderId: 'system',
+              senderName: 'System Handoff',
+              text: `⚡ Live Support Escalated: Connected to online agent (${onlineAgents[0].name}).`,
+              timestamp: new Date().toISOString(),
+              deliveryStatus: 'delivered',
+              channel: conv.channel
+            };
+            globalStore.messages[conv.id].push(systemHandoffMsg);
+          } else {
+            // Admin is OFFLINE / BUSY -> DO NOT transfer or hang the chat.
+            // Automatically generate a Support Ticket and dispatch email to admin!
+            conv.isAiHandling = true; // Keep AI responding to future inquiries
+            conv.status = 'pending';
+            conv.priority = 'high';
+
+            const ticketNumber = `TKT-${1000 + globalStore.tickets.length + 1}`;
+            const newTicket: Ticket = {
+              id: `tkt_${Date.now()}`,
+              ticketNumber,
+              conversationId: conv.id,
+              visitorId: visitor.id,
+              visitorName: visitor.name,
+              visitorEmail: visitor.email,
+              subject: `Customer Support Inquiry: ${text.slice(0, 50)}...`,
+              description: `Customer Message: "${text}"\n\nLocation: ${visitor.location.city}, ${visitor.location.country}\nIP: ${visitor.ip}\nChannel: ${conv.channel}\nChat ID: ${conv.id}`,
+              priority: 'high',
+              status: 'open',
+              departmentId: 'dept_support',
+              assignedAgentId: globalStore.users[0]?.id || 'user_admin_1',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              slaDueDate: new Date(Date.now() + 14400000).toISOString(),
+              slaBreached: false,
+              source: 'website',
+              tags: ['Auto Ticket', 'Agent Busy/Offline']
+            };
+
+            globalStore.tickets.unshift(newTicket);
+            globalStore.analytics.openTicketsCount = globalStore.tickets.filter(t => t.status === 'open').length;
+
+            const systemTicketMsg: Message = {
+              id: `msg_${Date.now()}_sys`,
+              conversationId: conv.id,
+              senderType: 'system',
+              senderId: 'system',
+              senderName: 'Ticket Dispatcher',
+              text: `🎫 Support Ticket #${ticketNumber} has been automatically created & dispatched to Admin email (aacreativeemb@gmail.com).`,
+              timestamp: new Date().toISOString(),
+              deliveryStatus: 'delivered',
+              channel: conv.channel
+            };
+            globalStore.messages[conv.id].push(systemTicketMsg);
+
+            // Send real email notification to Admin regarding the customer problem and generated ticket
+            sendAdminEmailNotification({
+              to: 'aacreativeemb@gmail.com',
+              subject: `🎫 [New Ticket #${ticketNumber}] Customer Issue: ${visitor.name} (${visitor.location.country})`,
+              text: `Hello Admin,\n\nA customer inquiry required support while no live agents were online.\nA new support ticket has been generated.\n\nTicket: #${ticketNumber}\nCustomer: ${visitor.name} (${visitor.email})\nLocation: ${visitor.location.city}, ${visitor.location.country} (IP: ${visitor.ip})\n\nCustomer Message/Problem:\n"${text}"\n\nPlease log in to https://chat.aacreativeemb.com or reply directly to the customer ASAP.\n\nAA Creative Support Desk`,
+              html: `
+                <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #0f172a; color: #ffffff; padding: 24px; border-radius: 12px; border: 1px solid #1e293b;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #334155; padding-bottom: 12px; margin-bottom: 16px;">
+                    <h3 style="color: #38bdf8; margin: 0;">🎫 New Support Ticket #${ticketNumber}</h3>
+                    <span style="background: #ef4444; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold;">HIGH PRIORITY</span>
+                  </div>
+                  <p style="color: #cbd5e1; font-size: 14px; margin-bottom: 16px;">
+                    A customer requested assistance on <strong>AA Creative Embroidery Live Chat</strong> while live agents were unavailable. A ticket has been automatically generated.
+                  </p>
+                  
+                  <div style="background: #1e293b; padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                    <div style="font-size: 12px; color: #94a3b8; margin-bottom: 4px;">CUSTOMER PROBLEM / INQUIRY:</div>
+                    <div style="font-size: 15px; color: #f8fafc; font-style: italic; font-weight: 500;">"${text}"</div>
+                  </div>
+
+                  <table style="width: 100%; font-size: 13px; color: #94a3b8; border-collapse: collapse; margin-bottom: 20px;">
+                    <tr>
+                      <td style="padding: 6px 0; border-bottom: 1px solid #334155;"><strong>Customer Name:</strong></td>
+                      <td style="padding: 6px 0; border-bottom: 1px solid #334155; color: #ffffff; text-align: right;">${visitor.name}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0; border-bottom: 1px solid #334155;"><strong>Email:</strong></td>
+                      <td style="padding: 6px 0; border-bottom: 1px solid #334155; color: #38bdf8; text-align: right;">${visitor.email}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0; border-bottom: 1px solid #334155;"><strong>Location:</strong></td>
+                      <td style="padding: 6px 0; border-bottom: 1px solid #334155; color: #ffffff; text-align: right;">${visitor.location.city}, ${visitor.location.country}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0;"><strong>IP Address:</strong></td>
+                      <td style="padding: 6px 0; color: #ffffff; text-align: right;">${visitor.ip}</td>
+                    </tr>
+                  </table>
+
+                  <div style="text-align: center; margin-top: 20px;">
+                    <a href="https://chat.aacreativeemb.com" style="background: #2563eb; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">Open Admin Portal & Reply</a>
+                  </div>
+                </div>
+              `
+            });
+          }
         }
       }
 
@@ -640,7 +752,39 @@ async function startServer() {
     };
 
     globalStore.tickets.unshift(newTicket);
+    globalStore.analytics.openTicketsCount = globalStore.tickets.filter(t => t.status === 'open').length;
+
+    // Send Real Email Notification for new ticket
+    sendAdminEmailNotification({
+      to: 'aacreativeemb@gmail.com',
+      subject: `🎫 [New Ticket #${newTicket.ticketNumber}] ${newTicket.subject}`,
+      text: `Hello Admin,\n\nA new support ticket has been created on the AA Creative Support Desk.\n\nTicket: #${newTicket.ticketNumber}\nCustomer: ${newTicket.visitorName} (${newTicket.visitorEmail})\nSubject: ${newTicket.subject}\nDetails: ${newTicket.description}\nPriority: ${newTicket.priority.toUpperCase()}\n\nView and manage tickets at https://chat.aacreativeemb.com\n\nAA Creative Embroidery UK`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #0f172a; color: #ffffff; padding: 24px; border-radius: 12px; border: 1px solid #1e293b;">
+          <h3 style="color: #38bdf8; margin-top: 0;">🎫 Support Ticket #${newTicket.ticketNumber}</h3>
+          <p style="color: #cbd5e1; font-size: 14px;"><strong>Subject:</strong> ${newTicket.subject}</p>
+          <div style="background: #1e293b; padding: 14px; border-radius: 8px; margin: 15px 0; color: #f8fafc; font-size: 13px;">
+            ${newTicket.description.replace(/\n/g, '<br/>')}
+          </div>
+          <p style="font-size: 12px; color: #94a3b8;">Customer: ${newTicket.visitorName} (${newTicket.visitorEmail})</p>
+        </div>
+      `
+    });
+
     res.json({ success: true, ticket: newTicket });
+  });
+
+  // User / Agent Status Update Endpoint
+  app.post('/api/users/status', (req, res) => {
+    const { userId, status } = req.body;
+    const user = globalStore.users.find(u => u.id === userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    if (status && ['online', 'away', 'offline'].includes(status)) {
+      user.status = status;
+    }
+    res.json({ success: true, user, users: globalStore.users });
   });
 
   // Save AI Settings & Knowledge

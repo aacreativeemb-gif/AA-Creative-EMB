@@ -31,21 +31,32 @@ export async function processCustomerMessageWithAI(
   const settings = globalStore.aiSettings;
   const lowerText = userMessageText.toLowerCase();
 
-  // 1. Check for hard escalation keywords first
-  const escalationKeywords = settings.escalationKeywords || ['agent', 'human', 'human agent', 'refund', 'complaint', 'gusa', 'manager', 'escalate', 'urgently'];
+  // 1. Check for hard escalation keywords or explicit ticket request
+  const escalationKeywords = settings.escalationKeywords || ['agent', 'human', 'human agent', 'refund', 'complaint', 'manager', 'escalate', 'urgently', 'ticket', 'genrate ticket', 'generate ticket', 'live support', 'technical support'];
   const isExplicitHumanRequested = escalationKeywords.some(kw => lowerText.includes(kw.toLowerCase()));
 
+  // Check if any human agent is online
+  const onlineAgents = globalStore.users.filter(u => u.status === 'online');
+  const isAnyAgentOnline = onlineAgents.length > 0;
+
   if (isExplicitHumanRequested) {
-    const summary = await generateAiConversationSummary(userMessageText, previousMessages, 'Customer explicitly requested human agent assistance.');
-    const whatsappInfo = settings.whatsappFallbackNumber || '+44 7462 23 8732';
-    const emailInfo = settings.fallbackEmail || 'admin@aacreativeemb.com';
+    const summary = await generateAiConversationSummary(userMessageText, previousMessages, 'Customer requested human/technical agent support.');
+    
+    let responseText = '';
+    if (isAnyAgentOnline) {
+      responseText = `Certainly! I am transferring your request to our online technical support specialist. An agent will connect with you in this chat momentarily.`;
+    } else {
+      responseText = `Our live technical support agent is currently busy assisting other clients. We have generated a support ticket for your inquiry and notified our administration team. Our admin will personally review your request and contact you as soon as possible (ASAP).`;
+    }
 
     return {
-      aiResponseText: `Certainly! I am transferring your conversation to one of our senior UK digitizing specialists. An agent will connect with you shortly.\n\n⚡ For urgent orders or 5-minute response, feel free to contact us on WhatsApp (${whatsappInfo}) or email (${emailInfo})!`,
+      aiResponseText: responseText,
       confidenceScore: 95,
       shouldEscalate: true,
-      escalationReason: "Customer requested human support agent ('" + userMessageText + "').",
-      languageDetected: detectLanguage(userMessageText),
+      escalationReason: isAnyAgentOnline 
+        ? "Customer requested live agent support." 
+        : "Customer requested live support, but agents are busy/offline. Support ticket auto-generated.",
+      languageDetected: 'English',
       isHumanRequested: true,
       aiSummary: summary
     };
@@ -77,9 +88,9 @@ BUSINESS KNOWLEDGE & POLICIES:
 - Custom Instructions: ${settings.customInstructions}
 
 STRICT SAFETY & BEHAVIOR RULES:
-1. Speak naturally, warmly, concisely, and helpfully like a top-rated human support rep.
-2. Automatically match the customer's language. If they speak English, respond in polished natural English. If they speak Urdu or Roman Urdu, reply warmly in Roman Urdu/Urdu.
-3. Keep responses helpful, direct, and concise (do not write overly long walls of text unless the customer asks for full pricing breakdowns).
+1. Speak naturally, warmly, concisely, and helpfully like a top-rated human support rep in professional UK/US English.
+2. IMPORTANT LANGUAGE DIRECTIVE: Always respond to the customer in clear, professional English. Never use Urdu in the customer-facing chat.
+3. If an issue requires human/agent intervention and no human agent is available, inform them politely in English that our live technical support agent is currently busy with other clients, a support ticket has been generated, and our admin will contact them ASAP.
 4. For price quotes, guide them to share their design artwork directly in chat, or via email (admin@aacreativeemb.com) or WhatsApp (+44 7462 23 8732).
 5. If you do not have enough info or confidence is low, set shouldEscalate: true.
 6. Calculate a confidence score between 0 and 100 based on how accurately the question is answered by the business knowledge.

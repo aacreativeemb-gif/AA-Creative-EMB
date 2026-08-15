@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Lock, Mail, KeyRound, ShieldCheck, ArrowRight, CheckCircle2, AlertCircle, Eye, EyeOff, Shield, RefreshCw } from 'lucide-react';
+import React, { useState } from 'react';
+import { Lock, Mail, KeyRound, ShieldCheck, ArrowRight, CheckCircle2, AlertCircle, Eye, EyeOff, Shield, Send } from 'lucide-react';
 
 interface AdminAuthProps {
   onAuthenticated: (user: any) => void;
@@ -26,9 +26,8 @@ export const AdminAuth: React.FC<AdminAuthProps> = ({ onAuthenticated }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [codeNotification, setCodeNotification] = useState<string | null>(null);
 
-  // Get or initialize device ID
+  // Get or initialize persistent device ID
   const getDeviceId = () => {
     let devId = localStorage.getItem('aa_trusted_device_id');
     if (!devId) {
@@ -43,7 +42,6 @@ export const AdminAuth: React.FC<AdminAuthProps> = ({ onAuthenticated }) => {
     e.preventDefault();
     setError(null);
     setSuccessMsg(null);
-    setCodeNotification(null);
     setLoading(true);
 
     const deviceId = getDeviceId();
@@ -66,13 +64,10 @@ export const AdminAuth: React.FC<AdminAuthProps> = ({ onAuthenticated }) => {
         localStorage.setItem('aa_admin_user', JSON.stringify(data.user));
         onAuthenticated(data.user);
       } else if (data.requires2FA) {
-        // Device is new/untrusted -> Prompt 2FA
+        // Device is new/untrusted -> Prompt 2FA and send code to email
         setPendingEmail(data.email || 'aacreativeemb@gmail.com');
         setMode('2fa');
-        setSuccessMsg(`Security verification code sent to ${data.email || 'aacreativeemb@gmail.com'}`);
-        if (data.otpPreview) {
-          setCodeNotification(`[Email Dispatch Simulation] Your 6-digit code is: ${data.otpPreview}`);
-        }
+        setSuccessMsg(`A 6-digit security verification code has been dispatched to ${data.email || 'aacreativeemb@gmail.com'}. Please check your email inbox or spam folder.`);
       } else {
         setError(data.error || 'Invalid email or password.');
       }
@@ -116,18 +111,43 @@ export const AdminAuth: React.FC<AdminAuthProps> = ({ onAuthenticated }) => {
         setError(data.error || 'Invalid or expired 6-digit verification code.');
       }
     } catch (err) {
-      setError('Verification failed. Please check network.');
+      setError('Verification failed. Please check your network connection.');
     } finally {
       setLoading(false);
     }
   };
 
-  // 3. Handle Request Reset OTP
+  // 3. Resend 2FA Code to Email
+  const handleResend2FACode = async () => {
+    setError(null);
+    setLoading(true);
+    const deviceId = getDeviceId();
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: pendingEmail,
+          password: password.trim() || 'Admin@123',
+          deviceId
+        })
+      });
+      const data = await res.json();
+      if (data.requires2FA) {
+        setSuccessMsg(`A new 6-digit security code has been re-sent to ${pendingEmail}.`);
+      }
+    } catch (err) {
+      setError('Failed to resend code.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 4. Handle Request Reset OTP
   const handleSendResetOTP = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccessMsg(null);
-    setCodeNotification(null);
     setLoading(true);
 
     try {
@@ -141,10 +161,7 @@ export const AdminAuth: React.FC<AdminAuthProps> = ({ onAuthenticated }) => {
       if (res.ok && data.success) {
         setPendingEmail(email.trim() || 'aacreativeemb@gmail.com');
         setMode('reset_verify');
-        setSuccessMsg(data.message || '6-digit code sent to aacreativeemb@gmail.com.');
-        if (data.otpPreview) {
-          setCodeNotification(`[Email Dispatch Simulation] Your reset code is: ${data.otpPreview}`);
-        }
+        setSuccessMsg(`A 6-digit password reset code has been sent to aacreativeemb@gmail.com. Please check your inbox.`);
       } else {
         setError(data.error || 'Failed to dispatch reset code.');
       }
@@ -155,14 +172,14 @@ export const AdminAuth: React.FC<AdminAuthProps> = ({ onAuthenticated }) => {
     }
   };
 
-  // 4. Handle Submit New Password
+  // 5. Handle Submit New Password
   const handleSubmitNewPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccessMsg(null);
 
     if (newPassword !== confirmPassword) {
-      setError('Passwords do not match. Please re-type accurately.');
+      setError('Passwords do not match. Please re-type carefully.');
       return;
     }
 
@@ -186,14 +203,14 @@ export const AdminAuth: React.FC<AdminAuthProps> = ({ onAuthenticated }) => {
       const data = await res.json();
 
       if (res.ok && data.success) {
-        setSuccessMsg('Your password has been updated! Please log in with your new password.');
+        setSuccessMsg('Your password has been updated! Please sign in with your new password.');
         setPassword('');
         setOtpCode('');
         setNewPassword('');
         setConfirmPassword('');
         setMode('login');
       } else {
-        setError(data.error || 'Failed to reset password. Verify your 6-digit code.');
+        setError(data.error || 'Failed to reset password. Please verify your 6-digit code.');
       }
     } catch (err) {
       setError('Failed to update password.');
@@ -202,11 +219,10 @@ export const AdminAuth: React.FC<AdminAuthProps> = ({ onAuthenticated }) => {
     }
   };
 
-  // 5. Google Account Verification
+  // 6. Google Account Verification
   const handleGoogleLoginPrompt = async () => {
     setError(null);
     setSuccessMsg(null);
-    setCodeNotification(null);
     setLoading(true);
 
     const deviceId = getDeviceId();
@@ -230,10 +246,7 @@ export const AdminAuth: React.FC<AdminAuthProps> = ({ onAuthenticated }) => {
       } else if (data.requires2FA) {
         setPendingEmail('aacreativeemb@gmail.com');
         setMode('2fa');
-        setSuccessMsg(`Google verification: 6-digit security code sent to aacreativeemb@gmail.com`);
-        if (data.otpPreview) {
-          setCodeNotification(`[Email Dispatch Simulation] Your 6-digit code is: ${data.otpPreview}`);
-        }
+        setSuccessMsg(`Google Verification: A 6-digit code has been dispatched to aacreativeemb@gmail.com.`);
       } else {
         setError(data.error || 'Google authentication rejected.');
       }
@@ -278,12 +291,6 @@ export const AdminAuth: React.FC<AdminAuthProps> = ({ onAuthenticated }) => {
           <div className="mb-5 p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-start gap-2.5">
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
             <span>{successMsg}</span>
-          </div>
-        )}
-
-        {codeNotification && (
-          <div className="mb-5 p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-200 text-xs font-mono">
-            {codeNotification}
           </div>
         )}
 
@@ -365,20 +372,20 @@ export const AdminAuth: React.FC<AdminAuthProps> = ({ onAuthenticated }) => {
                   <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
                   <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
                 </svg>
-                <span>Continue with Google (Requires 2FA Code)</span>
+                <span>Continue with Google (Requires Email Code)</span>
               </button>
             </div>
           </form>
         )}
 
-        {/* 2. 2FA CODE VERIFICATION */}
+        {/* 2. 2FA CODE VERIFICATION FROM EMAIL */}
         {mode === '2fa' && (
           <form onSubmit={handleVerify2FA} className="space-y-4">
-            <div className="p-3 bg-indigo-950/40 border border-indigo-500/20 rounded-xl text-center">
-              <Shield className="w-6 h-6 text-indigo-400 mx-auto mb-1" />
-              <p className="text-xs font-semibold text-white">Device Verification Required</p>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                We sent a 6-digit security code to <strong>{pendingEmail}</strong>
+            <div className="p-3.5 bg-indigo-950/40 border border-indigo-500/20 rounded-xl text-center">
+              <Mail className="w-6 h-6 text-indigo-400 mx-auto mb-1" />
+              <p className="text-xs font-semibold text-white">Check Your Email Inbox</p>
+              <p className="text-[11px] text-slate-400 mt-1">
+                We sent a 6-digit security code to <strong>{pendingEmail}</strong>. Please enter the code below to complete sign in.
               </p>
             </div>
 
@@ -392,7 +399,7 @@ export const AdminAuth: React.FC<AdminAuthProps> = ({ onAuthenticated }) => {
                 maxLength={6}
                 value={otpCode}
                 onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
-                placeholder="123456"
+                placeholder="••••••"
                 autoFocus
                 className="w-full bg-slate-950/90 border-2 border-indigo-500/50 rounded-xl py-3 text-center text-2xl font-mono tracking-widest text-white placeholder-slate-700 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/30"
               />
@@ -407,7 +414,7 @@ export const AdminAuth: React.FC<AdminAuthProps> = ({ onAuthenticated }) => {
                 className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-slate-900"
               />
               <label htmlFor="trustDevice" className="text-xs text-slate-300 cursor-pointer select-none">
-                Trust this device (Don't ask for code again on this browser)
+                Trust this device (Remember this browser for future logins)
               </label>
             </div>
 
@@ -416,17 +423,27 @@ export const AdminAuth: React.FC<AdminAuthProps> = ({ onAuthenticated }) => {
               disabled={loading || otpCode.length < 6}
               className="w-full bg-indigo-600 hover:bg-indigo-500 active:scale-[0.99] text-white font-semibold py-2.5 px-4 rounded-xl text-sm transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 disabled:opacity-50"
             >
-              {loading ? 'Verifying...' : 'Verify & Sign In'}
+              {loading ? 'Verifying Code...' : 'Verify & Access Portal'}
               <ArrowRight className="w-4 h-4" />
             </button>
 
-            <button
-              type="button"
-              onClick={() => { setMode('login'); setError(null); setSuccessMsg(null); setOtpCode(''); }}
-              className="w-full text-center text-xs text-slate-400 hover:text-white pt-1 transition-colors"
-            >
-              ← Back to Sign In
-            </button>
+            <div className="flex items-center justify-between text-xs text-slate-400 pt-2 px-1">
+              <button
+                type="button"
+                onClick={() => { setMode('login'); setError(null); setSuccessMsg(null); setOtpCode(''); }}
+                className="hover:text-white transition-colors"
+              >
+                ← Back
+              </button>
+              <button
+                type="button"
+                onClick={handleResend2FACode}
+                disabled={loading}
+                className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors"
+              >
+                Resend Code to Email
+              </button>
+            </div>
           </form>
         )}
 
@@ -458,7 +475,7 @@ export const AdminAuth: React.FC<AdminAuthProps> = ({ onAuthenticated }) => {
               disabled={loading}
               className="w-full bg-indigo-600 hover:bg-indigo-500 active:scale-[0.99] text-white font-semibold py-2.5 px-4 rounded-xl text-sm transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 disabled:opacity-50"
             >
-              {loading ? 'Sending Code...' : 'Send Verification Code'}
+              {loading ? 'Sending Code...' : 'Send Verification Code to Email'}
             </button>
 
             <button
@@ -476,7 +493,7 @@ export const AdminAuth: React.FC<AdminAuthProps> = ({ onAuthenticated }) => {
           <form onSubmit={handleSubmitNewPassword} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1.5 text-center">
-                Enter 6-Digit Code Received via Email
+                Enter 6-Digit Code Received in Your Email
               </label>
               <input
                 type="text"
@@ -484,7 +501,7 @@ export const AdminAuth: React.FC<AdminAuthProps> = ({ onAuthenticated }) => {
                 maxLength={6}
                 value={otpCode}
                 onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
-                placeholder="123456"
+                placeholder="••••••"
                 autoFocus
                 className="w-full bg-slate-950/90 border-2 border-indigo-500/50 rounded-xl py-2.5 text-center text-2xl font-mono tracking-widest text-white placeholder-slate-700 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/30"
               />

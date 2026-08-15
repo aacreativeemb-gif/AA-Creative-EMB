@@ -303,6 +303,21 @@ export default function App() {
         currentUser={currentUser}
         users={users}
         onSelectUser={u => setCurrentUser(u)}
+        onUpdateUserStatus={async (userId, status) => {
+          try {
+            const res = await fetch('/api/users/status', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId, status })
+            });
+            const data = await res.json();
+            if (data.success) {
+              fetchState();
+            }
+          } catch (err) {
+            console.error('Failed to update status:', err);
+          }
+        }}
         activeTab={activeTab}
         setActiveTab={tab => setActiveTab(tab)}
         onOpenEmbedModal={() => setShowEmbedModal(true)}

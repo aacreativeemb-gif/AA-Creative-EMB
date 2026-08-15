@@ -24,6 +24,7 @@ interface HeaderProps {
   currentUser: User;
   users: User[];
   onSelectUser: (u: User) => void;
+  onUpdateUserStatus?: (userId: string, status: 'online' | 'away' | 'offline') => void;
   activeTab: string;
   setActiveTab: (tab: string) => void;
   onOpenEmbedModal: () => void;
@@ -39,6 +40,7 @@ export const Header: React.FC<HeaderProps> = ({
   currentUser,
   users,
   onSelectUser,
+  onUpdateUserStatus,
   activeTab,
   setActiveTab,
   onOpenEmbedModal,
@@ -100,7 +102,7 @@ export const Header: React.FC<HeaderProps> = ({
             <span>Get Embed Script</span>
           </button>
 
-          {/* User / Agent switcher */}
+          {/* User / Agent switcher with direct Status Toggle */}
           <div className="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-md px-2.5 py-1">
             <img
               src={currentUser.avatar}
@@ -113,7 +115,7 @@ export const Header: React.FC<HeaderProps> = ({
                 const found = users.find(u => u.id === e.target.value);
                 if (found) onSelectUser(found);
               }}
-              className="bg-transparent text-xs text-slate-200 focus:outline-none"
+              className="bg-transparent text-xs text-slate-200 focus:outline-none max-w-[140px] truncate"
             >
               {users.map(u => (
                 <option key={u.id} value={u.id} className="bg-slate-800 text-slate-200">
@@ -121,16 +123,36 @@ export const Header: React.FC<HeaderProps> = ({
                 </option>
               ))}
             </select>
-            <span
-              className={`w-2 h-2 rounded-full ${
-                currentUser.status === 'online'
-                  ? 'bg-emerald-400 animate-pulse'
-                  : currentUser.status === 'away'
-                  ? 'bg-amber-400'
-                  : 'bg-slate-500'
-              }`}
-              title={`Agent status: ${currentUser.status}`}
-            />
+
+            {/* Status Selector Dropdown */}
+            {onUpdateUserStatus ? (
+              <select
+                value={currentUser.status}
+                onChange={e => onUpdateUserStatus(currentUser.id, e.target.value as any)}
+                className={`text-[11px] font-bold px-1.5 py-0.5 rounded focus:outline-none cursor-pointer border ${
+                  currentUser.status === 'online'
+                    ? 'bg-emerald-950/80 text-emerald-300 border-emerald-700'
+                    : currentUser.status === 'away'
+                    ? 'bg-amber-950/80 text-amber-300 border-amber-700'
+                    : 'bg-slate-950/80 text-slate-400 border-slate-700'
+                }`}
+              >
+                <option value="online" className="bg-slate-800 text-emerald-400">🟢 Online</option>
+                <option value="away" className="bg-slate-800 text-amber-400">🟡 Away</option>
+                <option value="offline" className="bg-slate-800 text-slate-400">⚪ Offline</option>
+              </select>
+            ) : (
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  currentUser.status === 'online'
+                    ? 'bg-emerald-400 animate-pulse'
+                    : currentUser.status === 'away'
+                    ? 'bg-amber-400'
+                    : 'bg-slate-500'
+                }`}
+                title={`Agent status: ${currentUser.status}`}
+              />
+            )}
           </div>
 
           {onLogout && (
