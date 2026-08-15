@@ -1,0 +1,6 @@
+{
+  "name": "AA Creative Embroidery UK - AI Customer Support Platform",
+  "description": "AI-Powered Customer Support & Live Chat Platform trained for AA Creative Embroidery UK Ltd (London, UK). Features automated digitizing quotes in GBP (£) and USD ($), DST/PES file support, British English AI responses, visitor tracking, and human handoff.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

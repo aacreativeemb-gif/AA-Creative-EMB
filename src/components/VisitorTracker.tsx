@@ -1,0 +1,137 @@
+import React from 'react';
+import {
+  Users,
+  Globe,
+  Monitor,
+  Smartphone,
+  ExternalLink,
+  MessageSquare,
+  Clock,
+  Search,
+  Tag,
+  ShieldCheck,
+  Zap
+} from 'lucide-react';
+import { Visitor } from '../types';
+
+interface VisitorTrackerProps {
+  visitors: Visitor[];
+  onStartChatWithVisitor: (visitor: Visitor) => void;
+}
+
+export const VisitorTracker: React.FC<VisitorTrackerProps> = ({ visitors, onStartChatWithVisitor }) => {
+  return (
+    <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
+      
+      {/* Overview Stats Header */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 uppercase tracking-wider">
+            Live Real-time Tracker
+          </span>
+          <h2 className="text-xl font-bold text-slate-800 mt-2">Active Website Visitors</h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Monitor incoming website traffic, current active pages, country origin, and initiate proactive support chats.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-4 text-center">
+          <div className="bg-slate-50 px-4 py-2 rounded-xl border border-slate-200">
+            <span className="text-2xl font-black text-emerald-600">{visitors.filter(v => v.status === 'online').length}</span>
+            <p className="text-[11px] text-slate-500 font-medium">Online Visitors</p>
+          </div>
+          <div className="bg-slate-50 px-4 py-2 rounded-xl border border-slate-200">
+            <span className="text-2xl font-black text-blue-600">3</span>
+            <p className="text-[11px] text-slate-500 font-medium">Countries</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Visitor Table */}
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+        <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+          <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+            <Users className="w-4 h-4 text-blue-600" />
+            Live Visitor Session Stream
+          </h3>
+          <span className="text-xs text-slate-500 font-medium">Auto-refresh active</span>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
+                <th className="p-3">Visitor Name & Info</th>
+                <th className="p-3">Location & IP</th>
+                <th className="p-3">Current Active URL</th>
+                <th className="p-3">Device & OS</th>
+                <th className="p-3">Time On Site</th>
+                <th className="p-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-slate-700">
+              {visitors.map(vis => (
+                <tr key={vis.id} className="hover:bg-slate-50 transition">
+                  <td className="p-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="relative">
+                        <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-xs">
+                          {vis.name[0]}
+                        </div>
+                        <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white ${vis.status === 'online' ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                      </div>
+                      <div>
+                        <p className="font-bold text-slate-800">{vis.name}</p>
+                        <p className="text-[11px] text-slate-400">{vis.email}</p>
+                      </div>
+                    </div>
+                  </td>
+
+                  <td className="p-3">
+                    <div className="font-medium text-slate-800 flex items-center gap-1.5">
+                      <span className="text-base">{vis.location.flag}</span>
+                      <span>{vis.location.city}, {vis.location.country}</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-mono mt-0.5">{vis.ip}</p>
+                  </td>
+
+                  <td className="p-3 max-w-[200px]">
+                    <p className="font-mono text-blue-600 text-[11px] truncate" title={vis.currentUrl}>
+                      {vis.currentUrl}
+                    </p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Referrer: {vis.referrer}</p>
+                  </td>
+
+                  <td className="p-3">
+                    <div className="font-medium text-slate-800 flex items-center gap-1">
+                      {vis.device.includes('Mobile') ? <Smartphone className="w-3.5 h-3.5 text-slate-500" /> : <Monitor className="w-3.5 h-3.5 text-slate-500" />}
+                      <span>{vis.device}</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400">{vis.browser} on {vis.os}</p>
+                  </td>
+
+                  <td className="p-3">
+                    <div className="font-semibold text-slate-800 flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5 text-slate-400" />
+                      <span>{Math.floor(vis.timeOnSiteSeconds / 60)}m {vis.timeOnSiteSeconds % 60}s</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400">{vis.pagesViewed} pages viewed</p>
+                  </td>
+
+                  <td className="p-3 text-right">
+                    <button
+                      onClick={() => onStartChatWithVisitor(vis)}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg font-semibold text-xs inline-flex items-center gap-1 shadow-2xs transition"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5" /> Start Chat
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
