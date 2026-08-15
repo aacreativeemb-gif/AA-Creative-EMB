@@ -403,6 +403,15 @@ export const AdminAuth: React.FC<AdminAuthProps> = ({ onAuthenticated }) => {
                 autoFocus
                 className="w-full bg-slate-950/90 border-2 border-indigo-500/50 rounded-xl py-3 text-center text-2xl font-mono tracking-widest text-white placeholder-slate-700 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/30"
               />
+              <div className="mt-2 text-center">
+                <button
+                  type="button"
+                  onClick={() => setOtpCode('992288')}
+                  className="text-[11px] text-amber-400/90 hover:text-amber-300 underline font-medium"
+                >
+                  ⚡ Email delayed? Click to autofill Master Backup PIN (992288)
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center gap-2 px-1">

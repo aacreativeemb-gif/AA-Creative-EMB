@@ -48,10 +48,10 @@ export class AppStore {
       email: 'admin@aacreativeemb.com',
       avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
       role: 'admin',
-      status: 'online',
+      status: 'offline',
       departmentIds: ['dept_digitizing', 'dept_support', 'dept_vector'],
       capacity: 10,
-      activeChatsCount: 2
+      activeChatsCount: 0
     },
     {
       id: 'user_agent_1',
@@ -59,10 +59,10 @@ export class AppStore {
       email: 'james@aacreativeemb.co.uk',
       avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
       role: 'agent',
-      status: 'online',
+      status: 'offline',
       departmentIds: ['dept_digitizing', 'dept_support'],
       capacity: 5,
-      activeChatsCount: 3
+      activeChatsCount: 0
     },
     {
       id: 'user_agent_2',
@@ -70,10 +70,10 @@ export class AppStore {
       email: 'charlotte@aacreativeemb.co.uk',
       avatar: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80',
       role: 'agent',
-      status: 'away',
+      status: 'offline',
       departmentIds: ['dept_vector'],
       capacity: 5,
-      activeChatsCount: 1
+      activeChatsCount: 0
     }
   ];
 
