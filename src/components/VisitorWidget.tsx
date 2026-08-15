@@ -177,21 +177,12 @@ export const VisitorWidget: React.FC<VisitorWidgetProps> = ({
               </div>
               <div>
                 <h3 className="font-bold text-sm leading-tight flex items-center gap-1.5">
-                  {aiSettings.businessName}
+                  AA Creative EMB Live Support
                   <Sparkles className="w-3.5 h-3.5 text-amber-300" />
                 </h3>
                 <p className="text-[11px] text-blue-100 flex items-center gap-1 mt-0.5">
-                  {isAiHandling ? (
-                    <>
-                      <Bot className="w-3 h-3 text-blue-200" />
-                      <span>{aiSettings.aiName} (AI First-Line)</span>
-                    </>
-                  ) : (
-                    <>
-                      <Headphones className="w-3 h-3 text-emerald-300" />
-                      <span>Connected with Human Support Agent</span>
-                    </>
-                  )}
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
+                  <span>Online</span>
                 </p>
               </div>
             </div>

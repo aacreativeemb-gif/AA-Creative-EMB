@@ -685,7 +685,7 @@ async function startServer() {
     savedMsgs.push({
       id: 'welcome_1',
       sender: 'ai',
-      text: 'Assalam o Alaikum & Welcome to AA Creative Embroidery UK! 🧵\\nHow can I help you today? Ask about digitizing rates, turnaround times, or vector art conversion.',
+      text: 'Hi & Welcome to AA Creative Embroidery! 🧵\\nHow can I help you today? Feel free to ask about digitizing rates, turnaround times, or vector art conversion.',
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     });
   }
@@ -953,8 +953,8 @@ async function startServer() {
       <div class="aa-agent-info">
         <div class="aa-avatar">AA</div>
         <div>
-          <div class="aa-agent-name">AA Creative AI Support</div>
-          <div class="aa-agent-status"><span class="aa-status-dot"></span> Online (Urdu / English)</div>
+          <div class="aa-agent-name">AA Creative EMB Live Support</div>
+          <div class="aa-agent-status"><span class="aa-status-dot"></span> Online</div>
         </div>
       </div>
       <button id="aa-close-btn">
@@ -970,7 +970,7 @@ async function startServer() {
       <span class="aa-pill" data-q="I want a free quote for my embroidery design.">💬 Get Quote</span>
     </div>
     <form id="aa-input-bar">
-      <input type="text" id="aa-text-input" placeholder="Type your message in English or Urdu..." autocomplete="off" />
+      <input type="text" id="aa-text-input" placeholder="Type your message here..." autocomplete="off" />
       <button type="submit" id="aa-send-btn">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
       </button>
