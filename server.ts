@@ -618,147 +618,162 @@ async function startServer() {
         conv.lastMessageText = aiResult.aiResponseText;
         conv.lastMessageAt = aiMessage.timestamp;
 
-        // If AI determines escalation or ticket generation is needed
-        if (aiResult.shouldEscalate && globalStore.aiSettings.humanHandoffEnabled) {
+        // If AI determines escalation or ticket generation is needed (order tracking, missing info, complaints, human support)
+        if ((aiResult.shouldEscalate || aiResult.requiresTicket) && globalStore.aiSettings.humanHandoffEnabled) {
           if (aiResult.aiSummary) {
             conv.aiSummary = aiResult.aiSummary;
           } else {
             conv.aiSummary = await generateAiConversationSummary(text, globalStore.messages[conv.id], aiResult.escalationReason || 'Customer requested support.');
           }
 
-          if (onlineAgents.length > 0) {
-            // Admin/agent is online -> Transfer chat
-            conv.isAiHandling = false;
-            conv.status = 'escalated';
-            conv.priority = 'urgent';
-            if (!conv.assignedAgentId) {
-              conv.assignedAgentId = onlineAgents[0].id;
-            }
+          conv.status = 'pending';
+          conv.priority = 'urgent';
 
-            const systemHandoffMsg: Message = {
-              id: `msg_${Date.now()}_sys`,
-              conversationId: conv.id,
-              senderType: 'system',
-              senderId: 'system',
-              senderName: 'System Handoff',
-              text: `⚡ Live Support Escalated: Connected to online agent (${onlineAgents[0].name}).`,
-              timestamp: new Date().toISOString(),
-              deliveryStatus: 'delivered',
-              channel: conv.channel
-            };
-            globalStore.messages[conv.id].push(systemHandoffMsg);
-          } else {
-            // Admin is OFFLINE / BUSY -> DO NOT transfer or hang the chat.
-            // Automatically generate a Support Ticket and dispatch email to admin!
-            conv.isAiHandling = true; // Keep AI responding to future inquiries
-            conv.status = 'pending';
-            conv.priority = 'high';
+          const ticketNumber = `TKT-${1000 + globalStore.tickets.length + 1}`;
+          
+          // Replace any {{TICKET_NUMBER}} placeholder in AI message text
+          let finalAiResponse = aiResult.aiResponseText.replace(/\{\{TICKET_NUMBER\}\}/g, `#${ticketNumber}`);
+          
+          // If AI text didn't explicitly include the ticket number, format a clean message
+          if (!finalAiResponse.includes(ticketNumber)) {
+            finalAiResponse = `${finalAiResponse}\n\n🎫 Support Ticket #${ticketNumber} has been generated for your inquiry. Our administration team (aacreativeemb@gmail.com) has been notified immediately and an administrator will contact you directly to resolve your request ASAP.`;
+          }
 
-            const ticketNumber = `TKT-${1000 + globalStore.tickets.length + 1}`;
-            
-            // If visitor provided email or phone in message, update visitor record
-            if (aiResult.extractedDetails?.email && visitor.email.includes('@guest.aaemb.com')) {
-              visitor.email = aiResult.extractedDetails.email;
-            }
+          if (aiMessage) {
+            aiMessage.text = finalAiResponse;
+            conv.lastMessageText = finalAiResponse;
+          }
 
-            const customerPhone = aiResult.extractedDetails?.phone || visitor.phone || 'Not provided in chat';
-            const orderInfo = aiResult.extractedDetails?.orderNumber ? `Order #: ${aiResult.extractedDetails.orderNumber} (${aiResult.extractedDetails.projectType || 'Digitizing/Vector'})` : 'Inquiry / General Support';
+          // If visitor provided email or phone in message, update visitor record
+          if (aiResult.extractedDetails?.email && visitor.email.includes('@guest.aaemb.com')) {
+            visitor.email = aiResult.extractedDetails.email;
+          }
+          if (aiResult.extractedDetails?.phone && !visitor.phone) {
+            visitor.phone = aiResult.extractedDetails.phone;
+          }
 
-            const newTicket: Ticket = {
-              id: `tkt_${Date.now()}`,
-              ticketNumber,
-              conversationId: conv.id,
-              visitorId: visitor.id,
-              visitorName: visitor.name,
-              visitorEmail: visitor.email,
-              subject: `${orderInfo} - ${visitor.name}`,
-              description: `Customer Message: "${text}"\n\nProject / Order: ${orderInfo}\nCustomer Phone: ${customerPhone}\nCustomer Email: ${visitor.email}\nLocation: ${visitor.location.city}, ${visitor.location.country}\nIP: ${visitor.ip}\nChannel: ${conv.channel}\nChat ID: ${conv.id}`,
-              priority: 'high',
-              status: 'open',
-              departmentId: 'dept_support',
-              assignedAgentId: globalStore.users[0]?.id || 'user_admin_1',
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-              slaDueDate: new Date(Date.now() + 14400000).toISOString(),
-              slaBreached: false,
-              source: 'website',
-              tags: ['Auto Ticket', 'Agent Busy/Offline']
-            };
+          const customerPhone = aiResult.extractedDetails?.phone || visitor.phone || 'Not provided in chat';
+          const orderInfo = aiResult.extractedDetails?.orderNumber ? `Order #${aiResult.extractedDetails.orderNumber} (${aiResult.extractedDetails.projectType || 'Digitizing/Vector'})` : 'Digitizing / Vector Inquiry';
+          const problemSummary = aiResult.problemSummary || aiResult.escalationReason || `Customer inquiry regarding: "${text}"`;
 
-            globalStore.tickets.unshift(newTicket);
-            globalStore.analytics.openTicketsCount = globalStore.tickets.filter(t => t.status === 'open').length;
+          // Generate Ticket Record in DB
+          const newTicket: Ticket = {
+            id: `tkt_${Date.now()}`,
+            ticketNumber,
+            conversationId: conv.id,
+            visitorId: visitor.id,
+            visitorName: visitor.name,
+            visitorEmail: visitor.email,
+            subject: `${orderInfo} - ${visitor.name}`,
+            description: `CUSTOMER PROBLEM / ISSUE:\n"${problemSummary}"\n\nFull Customer Message:\n"${text}"\n\nProject / Order: ${orderInfo}\nCustomer Phone: ${customerPhone}\nCustomer Email: ${visitor.email}\nLocation: ${visitor.location.city}, ${visitor.location.country}\nIP: ${visitor.ip}\nChannel: ${conv.channel}\nChat ID: ${conv.id}`,
+            priority: 'urgent',
+            status: 'open',
+            departmentId: 'dept_support',
+            assignedAgentId: globalStore.users[0]?.id || 'user_admin_1',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            slaDueDate: new Date(Date.now() + 14400000).toISOString(),
+            slaBreached: false,
+            source: 'website',
+            tags: ['Auto Ticket', 'High Priority', 'Admin Email Dispatched']
+          };
 
-            // Ensure the AI message clearly mentions the generated ticket number
-            const customizedReply = `Our live technical support agent is currently busy assisting other clients. We have generated support ticket #${ticketNumber} for your inquiry and notified our administration team. Our admin will personally review your request and contact you as soon as possible (ASAP).`;
-            
-            if (aiMessage) {
-              aiMessage.text = customizedReply;
-              conv.lastMessageText = customizedReply;
-            }
+          globalStore.tickets.unshift(newTicket);
+          globalStore.analytics.openTicketsCount = globalStore.tickets.filter(t => t.status === 'open').length;
 
-            const systemTicketMsg: Message = {
-              id: `msg_${Date.now()}_sys`,
-              conversationId: conv.id,
-              senderType: 'system',
-              senderId: 'system',
-              senderName: 'Ticket Dispatcher',
-              text: `🎫 Support Ticket #${ticketNumber} has been automatically created & dispatched to Admin email (aacreativeemb@gmail.com).`,
-              timestamp: new Date().toISOString(),
-              deliveryStatus: 'delivered',
-              channel: conv.channel
-            };
-            globalStore.messages[conv.id].push(systemTicketMsg);
+          // Push clean system notification to chat
+          const systemTicketMsg: Message = {
+            id: `msg_${Date.now()}_sys`,
+            conversationId: conv.id,
+            senderType: 'system',
+            senderId: 'system',
+            senderName: 'Support System',
+            text: `🎫 Support Ticket #${ticketNumber} created. Admin team alerted at aacreativeemb@gmail.com.`,
+            timestamp: new Date().toISOString(),
+            deliveryStatus: 'delivered',
+            channel: conv.channel
+          };
+          globalStore.messages[conv.id].push(systemTicketMsg);
 
-            // Send real email notification to Admin regarding the customer problem and generated ticket
+          // 1. Send urgent email notification to Admin (aacreativeemb@gmail.com)
+          sendAdminEmailNotification({
+            to: 'aacreativeemb@gmail.com',
+            subject: `🎫 [URGENT Ticket #${ticketNumber}] Customer Issue: ${visitor.name} - ${orderInfo}`,
+            text: `Hello Admin,\n\nA customer requires immediate support on AA Creative Embroidery Live Chat.\nA high-priority support ticket #${ticketNumber} has been automatically generated.\n\n=========================================\nHIGHLIGHTED CUSTOMER ISSUE:\n"${problemSummary}"\n=========================================\n\nCustomer Details:\n- Name: ${visitor.name}\n- Email: ${visitor.email}\n- Phone: ${customerPhone}\n- Order: ${orderInfo}\n- Location: ${visitor.location.city}, ${visitor.location.country} (IP: ${visitor.ip})\n- Active Page: ${visitor.currentUrl || 'Website'}\n\nCustomer Chat Message:\n"${text}"\n\nAction Required: Please review the order records and contact the customer to resolve their issue promptly.\n\nAA Creative Support Desk\nhttps://chat.aacreativeemb.com`,
+            html: `
+              <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0f172a; color: #ffffff; padding: 24px; border-radius: 14px; border: 1px solid #334155;">
+                <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #334155; padding-bottom: 14px; margin-bottom: 18px;">
+                  <div>
+                    <h2 style="color: #38bdf8; margin: 0; font-size: 20px;">🎫 Support Ticket #${ticketNumber}</h2>
+                    <p style="color: #94a3b8; font-size: 12px; margin: 4px 0 0 0;">AA Creative Embroidery Customer Escalation</p>
+                  </div>
+                  <span style="background: #ef4444; color: white; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: bold; letter-spacing: 0.5px;">URGENT ACTION</span>
+                </div>
+
+                <div style="background: #1e293b; border-left: 4px solid #38bdf8; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+                  <div style="font-size: 11px; font-weight: bold; color: #38bdf8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">HIGHLIGHTED CUSTOMER ISSUE:</div>
+                  <div style="font-size: 15px; color: #f8fafc; font-weight: 600; line-height: 1.5;">${problemSummary}</div>
+                </div>
+
+                <div style="background: #1e293b; padding: 14px; border-radius: 8px; margin-bottom: 20px;">
+                  <div style="font-size: 11px; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px;">LATEST CUSTOMER MESSAGE:</div>
+                  <div style="font-size: 14px; color: #e2e8f0; font-style: italic; line-height: 1.5;">"${text}"</div>
+                </div>
+
+                <table style="width: 100%; font-size: 13px; color: #cbd5e1; border-collapse: collapse; margin-bottom: 24px;">
+                  <tr>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #334155; width: 35%;"><strong>Customer Name:</strong></td>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #334155; color: #ffffff; font-weight: 600; text-align: right;">${visitor.name}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #334155;"><strong>Email Address:</strong></td>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #334155; color: #38bdf8; font-weight: 600; text-align: right;"><a href="mailto:${visitor.email}" style="color: #38bdf8; text-decoration: none;">${visitor.email}</a></td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #334155;"><strong>Phone Number:</strong></td>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #334155; color: #ffffff; text-align: right;">${customerPhone}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #334155;"><strong>Order Reference:</strong></td>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #334155; color: #c084fc; font-weight: 600; text-align: right;">${orderInfo}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #334155;"><strong>Visitor Location:</strong></td>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #334155; color: #ffffff; text-align: right;">${visitor.location.flag} ${visitor.location.city}, ${visitor.location.country}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0;"><strong>IP Address:</strong></td>
+                    <td style="padding: 8px 0; color: #94a3b8; text-align: right;">${visitor.ip}</td>
+                  </tr>
+                </table>
+
+                <div style="text-align: center; margin-top: 10px;">
+                  <a href="https://chat.aacreativeemb.com" style="background: #2563eb; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 14px; display: inline-block; box-shadow: 0 4px 12px rgba(37,99,235,0.4);">Open Admin Inbox & Resolve</a>
+                </div>
+              </div>
+            `
+          });
+
+          // 2. If customer has a real email, send them a confirmation email
+          if (visitor.email && !visitor.email.includes('@guest.aaemb.com')) {
             sendAdminEmailNotification({
-              to: 'aacreativeemb@gmail.com',
-              subject: `🎫 [New Ticket #${ticketNumber}] Customer Issue: ${visitor.name} (${visitor.location.country})`,
-              text: `Hello Admin,\n\nA customer inquiry required support while no live agents were online.\nA new support ticket has been generated.\n\nTicket: #${ticketNumber}\nCustomer: ${visitor.name} (${visitor.email})\nPhone: ${customerPhone}\nOrder: ${orderInfo}\nLocation: ${visitor.location.city}, ${visitor.location.country} (IP: ${visitor.ip})\n\nCustomer Message/Problem:\n"${text}"\n\nPlease log in to https://chat.aacreativeemb.com or reply directly to the customer ASAP.\n\nAA Creative Support Desk`,
+              to: visitor.email,
+              subject: `[Ticket #${ticketNumber}] We received your inquiry - AA Creative Embroidery`,
+              text: `Dear ${visitor.name},\n\nThank you for contacting AA Creative Embroidery.\n\nWe have generated Support Ticket #${ticketNumber} for your inquiry regarding:\n"${problemSummary}"\n\nOur administration and technical support team has been notified and will review your request and contact you shortly to resolve this.\n\nBest regards,\nAA Creative Support Team\naacreativeemb@gmail.com\n+44 7462 23 8732`,
               html: `
-                <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #0f172a; color: #ffffff; padding: 24px; border-radius: 12px; border: 1px solid #1e293b;">
-                  <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #334155; padding-bottom: 12px; margin-bottom: 16px;">
-                    <h3 style="color: #38bdf8; margin: 0;">🎫 New Support Ticket #${ticketNumber}</h3>
-                    <span style="background: #ef4444; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold;">HIGH PRIORITY</span>
-                  </div>
-                  <p style="color: #cbd5e1; font-size: 14px; margin-bottom: 16px;">
-                    A customer requested assistance on <strong>AA Creative Embroidery Live Chat</strong> while live agents were unavailable. A ticket has been automatically generated.
-                  </p>
+                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 540px; margin: 0 auto; background: #ffffff; color: #1e293b; padding: 24px; border-radius: 10px; border: 1px solid #e2e8f0;">
+                  <h2 style="color: #0f172a; margin-top: 0;">Support Ticket #${ticketNumber} Created</h2>
+                  <p>Dear ${visitor.name},</p>
+                  <p>Thank you for contacting <strong>AA Creative Embroidery</strong>. We have received your request and logged it under Support Ticket <strong>#${ticketNumber}</strong>.</p>
                   
-                  <div style="background: #1e293b; padding: 16px; border-radius: 8px; margin-bottom: 16px;">
-                    <div style="font-size: 12px; color: #94a3b8; margin-bottom: 4px;">CUSTOMER PROBLEM / INQUIRY:</div>
-                    <div style="font-size: 15px; color: #f8fafc; font-style: italic; font-weight: 500;">"${text}"</div>
+                  <div style="background: #f1f5f9; padding: 14px; border-radius: 6px; margin: 16px 0; border-left: 4px solid #2563eb;">
+                    <div style="font-size: 12px; color: #64748b; font-weight: bold; text-transform: uppercase;">Your Inquiry:</div>
+                    <div style="font-size: 14px; color: #0f172a; margin-top: 4px;">${problemSummary}</div>
                   </div>
 
-                  <table style="width: 100%; font-size: 13px; color: #94a3b8; border-collapse: collapse; margin-bottom: 20px;">
-                    <tr>
-                      <td style="padding: 6px 0; border-bottom: 1px solid #334155;"><strong>Customer Name:</strong></td>
-                      <td style="padding: 6px 0; border-bottom: 1px solid #334155; color: #ffffff; text-align: right;">${visitor.name}</td>
-                    </tr>
-                    <tr>
-                      <td style="padding: 6px 0; border-bottom: 1px solid #334155;"><strong>Email:</strong></td>
-                      <td style="padding: 6px 0; border-bottom: 1px solid #334155; color: #38bdf8; text-align: right;">${visitor.email}</td>
-                    </tr>
-                    <tr>
-                      <td style="padding: 6px 0; border-bottom: 1px solid #334155;"><strong>Phone:</strong></td>
-                      <td style="padding: 6px 0; border-bottom: 1px solid #334155; color: #ffffff; text-align: right;">${customerPhone}</td>
-                    </tr>
-                    <tr>
-                      <td style="padding: 6px 0; border-bottom: 1px solid #334155;"><strong>Order / Service:</strong></td>
-                      <td style="padding: 6px 0; border-bottom: 1px solid #334155; color: #a855f7; text-align: right;">${orderInfo}</td>
-                    </tr>
-                    <tr>
-                      <td style="padding: 6px 0; border-bottom: 1px solid #334155;"><strong>Location:</strong></td>
-                      <td style="padding: 6px 0; border-bottom: 1px solid #334155; color: #ffffff; text-align: right;">${visitor.location.city}, ${visitor.location.country}</td>
-                    </tr>
-                    <tr>
-                      <td style="padding: 6px 0;"><strong>IP Address:</strong></td>
-                      <td style="padding: 6px 0; color: #ffffff; text-align: right;">${visitor.ip}</td>
-                    </tr>
-                  </table>
-
-                  <div style="text-align: center; margin-top: 20px;">
-                    <a href="https://chat.aacreativeemb.com" style="background: #2563eb; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">Open Admin Portal & Reply</a>
-                  </div>
+                  <p>Our management and technical support team will review your order details and contact you directly to resolve this as quickly as possible.</p>
+                  <p style="font-size: 13px; color: #64748b; margin-top: 24px;">If you have additional files or details to share, you can reply directly to this email.</p>
+                  <p style="margin-bottom: 0;">Warm regards,<br><strong>AA Creative Support Team</strong><br>aacreativeemb@gmail.com</p>
                 </div>
               `
             });

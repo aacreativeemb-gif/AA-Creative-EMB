@@ -109,8 +109,14 @@ export const VisitorWidget: React.FC<VisitorWidgetProps> = ({
         </div>
 
         <div className="space-y-2 border-t border-slate-100 pt-3">
-          <label className="text-xs font-semibold text-slate-700">Simulate Digitizing & Multilingual Prompts:</label>
+          <label className="text-xs font-semibold text-slate-700">Simulate Digitizing & Ticket Prompts:</label>
           <div className="flex flex-col gap-1.5">
+            <button
+              onClick={() => handleQuickPrompt('could please find my order number 3541')}
+              className="text-left text-xs bg-amber-50 hover:bg-amber-100 text-amber-900 p-2 rounded-lg border border-amber-200 transition font-medium"
+            >
+              📦 <strong>Order Status Lookup:</strong> "could please find my order number 3541"
+            </button>
             <button
               onClick={() => handleQuickPrompt('Hello! Need 3D puff cap logo digitizing rate for Tajima DST file in London')}
               className="text-left text-xs bg-slate-50 hover:bg-blue-50 hover:text-blue-700 text-slate-700 p-2 rounded-lg border border-slate-200 transition"
@@ -124,10 +130,10 @@ export const VisitorWidget: React.FC<VisitorWidgetProps> = ({
               🇵🇰 <strong>Roman Urdu:</strong> "cap digitizing rates kitni jaldi milegi?"
             </button>
             <button
-              onClick={() => handleQuickPrompt('bohat urgent hai, agent se baat karwao foran!')}
-              className="text-left text-xs bg-amber-50 hover:bg-amber-100 text-amber-800 p-2 rounded-lg border border-amber-200 transition"
+              onClick={() => handleQuickPrompt('I have an urgent problem with my stitch out, need human agent support please!')}
+              className="text-left text-xs bg-red-50 hover:bg-red-100 text-red-800 p-2 rounded-lg border border-red-200 transition"
             >
-              ⚡ <strong>Urgent Handoff & WhatsApp Suggest:</strong> "urgent agent se baat karwao"
+              ⚡ <strong>Urgent Escalation & Ticket:</strong> "urgent problem with my stitch out"
             </button>
           </div>
         </div>

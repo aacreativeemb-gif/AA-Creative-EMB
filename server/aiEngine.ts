@@ -17,6 +17,8 @@ export interface AiProcessResult {
   aiResponseText: string;
   confidenceScore: number;
   shouldEscalate: boolean;
+  requiresTicket?: boolean;
+  problemSummary?: string;
   escalationReason?: string;
   languageDetected: string;
   isHumanRequested: boolean;
@@ -38,44 +40,40 @@ export async function processCustomerMessageWithAI(
   const settings = globalStore.aiSettings;
   const lowerText = userMessageText.toLowerCase().trim();
 
-  // Extract potential phone or email from message
+  // Extract potential phone or email or order from message
   const emailMatch = userMessageText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
   const phoneMatch = userMessageText.match(/(?:\+?\d{1,4}[\s-]?)?\(?\d{2,5}\)?[\s-]?\d{3,5}[\s-]?\d{3,5}/);
-  const orderMatch = userMessageText.match(/(?:order\s*(?:#|no\.?|num\.?|number)?\s*[:=]?\s*([0-9a-zA-Z-]+))/i);
+  const orderMatch = userMessageText.match(/(?:order\s*(?:#|no\.?|num\.?|number)?\s*[:=]?\s*([0-9a-zA-Z-]+))/i) || userMessageText.match(/(?:#\s*([0-9a-zA-Z-]+))/);
+  const extractedOrderNum = orderMatch ? orderMatch[1] : (userMessageText.match(/\b\d{3,7}\b/)?.[0] || undefined);
 
-  // Check online agents
-  const onlineAgents = globalStore.users.filter(u => u.status === 'online');
-  const isAnyAgentOnline = onlineAgents.length > 0;
-
-  // 1. Check for hard escalation keywords or explicit ticket request
-  const escalationKeywords = settings.escalationKeywords || ['agent', 'human', 'human agent', 'refund', 'complaint', 'manager', 'escalate', 'urgently', 'ticket', 'genrate ticket', 'generate ticket', 'live support', 'technical support'];
+  // Check for order queries, explicit ticket request, missing info, complaints, human support
+  const escalationKeywords = settings.escalationKeywords || ['agent', 'human', 'human agent', 'refund', 'complaint', 'manager', 'escalate', 'urgently', 'ticket', 'genrate ticket', 'generate ticket', 'live support', 'technical support', 'speak to someone'];
   const isExplicitHumanRequested = escalationKeywords.some(kw => lowerText.includes(kw.toLowerCase()));
+  const isOrderQuery = lowerText.includes('order') || lowerText.includes('staus') || lowerText.includes('status') || lowerText.includes('track') || lowerText.includes('find my') || lowerText.includes('find order') || !!extractedOrderNum;
 
-  // Check if this is an order status query (e.g. "status of order", "order number3542", "track order")
-  const isOrderQuery = lowerText.includes('order') || lowerText.includes('staus') || lowerText.includes('status') || lowerText.includes('track') || lowerText.includes('digitizing order') || lowerText.includes('vector order') || !!orderMatch;
+  // 1. If customer asks about order status or explicit human agent or ticket
+  if (isExplicitHumanRequested || isOrderQuery) {
+    const orderNumText = extractedOrderNum ? `#${extractedOrderNum}` : 'your order';
+    const problemDetail = isOrderQuery 
+      ? `Customer requested status & details for Order ${orderNumText}. Inquiry: "${userMessageText}"`
+      : `Customer requested urgent human support/ticket. Inquiry: "${userMessageText}"`;
 
-  if (isExplicitHumanRequested || (isOrderQuery && (lowerText.includes('number') || lowerText.includes('#') || /\d{3,}/.test(lowerText)))) {
-    const summary = await generateAiConversationSummary(userMessageText, previousMessages, isOrderQuery ? 'Customer inquiring about order status.' : 'Customer requested human/technical agent support.');
-    
-    let responseText = '';
-    if (isAnyAgentOnline) {
-      responseText = `Certainly! I am transferring your request to our online technical support specialist. An agent will connect with you in this chat momentarily.`;
-    } else {
-      responseText = `Our live technical support agent is currently busy assisting other clients. We have generated a support ticket for your inquiry and notified our administration team. Our admin will personally review your request and contact you as soon as possible (ASAP).`;
-    }
+    const summary = await generateAiConversationSummary(userMessageText, previousMessages, problemDetail);
+
+    const proactiveReply = `I have logged your request regarding Order ${orderNumText} and generated Support Ticket {{TICKET_NUMBER}} for you.\n\nOur administration team has been immediately notified via high-priority email at aacreativeemb@gmail.com with your problem details. An administrator will review your order records and contact you promptly to resolve this.\n\nIf you haven't already provided your email address or phone number, please share it here so we can update you directly!`;
 
     return {
-      aiResponseText: responseText,
+      aiResponseText: proactiveReply,
       confidenceScore: 95,
       shouldEscalate: true,
-      escalationReason: isAnyAgentOnline 
-        ? "Customer requested live agent support." 
-        : "Customer requested live support/order status, but agents are busy/offline. Support ticket auto-generated.",
+      requiresTicket: true,
+      problemSummary: problemDetail,
+      escalationReason: problemDetail,
       languageDetected: 'English',
-      isHumanRequested: isExplicitHumanRequested,
+      isHumanRequested: true,
       aiSummary: summary,
       extractedDetails: {
-        orderNumber: orderMatch ? orderMatch[1] : undefined,
+        orderNumber: extractedOrderNum,
         projectType: lowerText.includes('vector') ? 'vector' : lowerText.includes('digitiz') ? 'digitizing' : undefined,
         email: emailMatch ? emailMatch[0] : undefined,
         phone: phoneMatch ? phoneMatch[0] : undefined
@@ -88,13 +86,15 @@ export async function processCustomerMessageWithAI(
     try {
       const systemPrompt = `You are a professional, friendly, and expert customer support specialist at '${settings.businessName}' (AA Creative Embroidery UK).
 CRITICAL DIRECTIVES:
-1. ALWAYS speak to the customer strictly as a real customer service executive / digitizing specialist in professional UK/US English.
+1. ALWAYS speak to the customer strictly as a real customer service executive in professional UK/US English.
 2. NEVER speak or reply in Urdu or Roman Urdu to the customer. All customer responses MUST be in English.
 3. NEVER say "I am an AI", "As an AI model", "I am a bot". Use "I", "we", "our team", and "our production digitizers".
-4. When a customer asks about their order status or a specific project:
-   - Ask clarifying details if not provided (e.g. whether it is an Embroidery Digitizing or Vector Art order).
-   - If they need administrative verification or live human help and no agent is online, escalate so the system auto-generates a ticket.
-5. For price quotes, guide them to upload their design artwork directly in chat, or email admin@aacreativeemb.com, or WhatsApp (+44 7462 23 8732).
+4. When a customer asks about their order status, a specific order number (e.g. 3541), billing, refund, custom request, or anything you do not have in knowledge base:
+   - Set "shouldEscalate": true
+   - Set "requiresTicket": true
+   - Set "problemSummary": clear, detailed summary of the customer's problem
+   - In "responseText", discuss their problem directly in English, inform them that Support Ticket {{TICKET_NUMBER}} has been generated for their inquiry, our administration team has been immediately notified via email (aacreativeemb@gmail.com), and an administrator will contact them promptly to resolve it. Ask for their email/phone if missing.
+5. For standard questions (pricing, turnaround 2-6 hrs, formats DST/PES/EMB/Vector AI/EPS, revisions), answer helpfully in English.
 
 BUSINESS KNOWLEDGE:
 - Description: ${settings.description}
@@ -103,7 +103,7 @@ BUSINESS KNOWLEDGE:
 - FAQs: ${settings.faqsText}
 - Return & Refund Policy: ${settings.returnRefundPolicy}
 - Turnaround: 2-6 hours standard, 2-hour express rush available.
-- Contact: admin@aacreativeemb.com, +44 7462 23 8732
+- Contact: aacreativeemb@gmail.com, +44 7462 23 8732
 
 Respond STRICTLY in JSON format matching the schema provided.`;
 
@@ -121,7 +121,7 @@ Respond STRICTLY in JSON format matching the schema provided.`;
             properties: {
               responseText: {
                 type: Type.STRING,
-                description: 'The natural customer support response to send to the visitor in English.'
+                description: 'The customer support response in professional English. If ticket is needed, mention Support Ticket {{TICKET_NUMBER}} and email alert to admin.'
               },
               confidenceScore: {
                 type: Type.NUMBER,
@@ -129,7 +129,15 @@ Respond STRICTLY in JSON format matching the schema provided.`;
               },
               shouldEscalate: {
                 type: Type.BOOLEAN,
-                description: 'Set true if user asks for human, order tracking, complaint, or complex issue.'
+                description: 'Set true if user asks for human, order tracking, complaint, unknown info, or complex issue.'
+              },
+              requiresTicket: {
+                type: Type.BOOLEAN,
+                description: 'Set true if support ticket should be generated and emailed to admin.'
+              },
+              problemSummary: {
+                type: Type.STRING,
+                description: 'Detailed description of the customer problem for admin email.'
               },
               escalationReason: {
                 type: Type.STRING,
@@ -154,29 +162,32 @@ Respond STRICTLY in JSON format matching the schema provided.`;
 
       const confidenceScore = parsed.confidenceScore ?? 85;
       const shouldEscalate = parsed.shouldEscalate || confidenceScore < settings.confidenceThreshold;
+      const requiresTicket = parsed.requiresTicket || shouldEscalate;
 
       let summary: AiSummary | undefined = undefined;
       if (shouldEscalate) {
         summary = {
           sentiment: parsed.customerSentiment || 'neutral',
-          summary: `Customer intent: ${parsed.extractedIntent}. Message: "${userMessageText}"`,
+          summary: parsed.problemSummary || `Customer inquiry: ${parsed.extractedIntent}. Message: "${userMessageText}"`,
           extractedIntent: parsed.extractedIntent || 'General Inquiry',
           confidenceScore: confidenceScore,
-          recommendedAction: 'Review order details and contact customer.',
+          recommendedAction: 'Review customer details and contact directly ASAP.',
           escalationReason: parsed.escalationReason || (confidenceScore < settings.confidenceThreshold ? 'Low AI confidence score.' : 'Customer query.')
         };
       }
 
       return {
-        aiResponseText: parsed.responseText || "Thank you for reaching out to AA Creative Embroidery! How can I help with your digitizing or vector project?",
+        aiResponseText: parsed.responseText || "Thank you for contacting AA Creative Embroidery! I have received your message. How can I help with your digitizing or vector project?",
         confidenceScore,
         shouldEscalate,
+        requiresTicket,
+        problemSummary: parsed.problemSummary || `Customer inquiry: "${userMessageText}"`,
         escalationReason: parsed.escalationReason,
         languageDetected: 'English',
         isHumanRequested: false,
         aiSummary: summary,
         extractedDetails: {
-          orderNumber: orderMatch ? orderMatch[1] : undefined,
+          orderNumber: extractedOrderNum,
           projectType: lowerText.includes('vector') ? 'vector' : lowerText.includes('digitiz') ? 'digitizing' : undefined,
           email: emailMatch ? emailMatch[0] : undefined,
           phone: phoneMatch ? phoneMatch[0] : undefined
@@ -187,7 +198,7 @@ Respond STRICTLY in JSON format matching the schema provided.`;
     }
   }
 
-  // Smart fallback if API key not available
+  // Fallback
   return getFallbackAiResponse(userMessageText, previousMessages);
 }
 
@@ -262,42 +273,30 @@ function getFallbackAiResponse(userMessageText: string, previousMessages: Messag
   const phoneMatch = userMessageText.match(/(?:\+?\d{1,4}[\s-]?)?\(?\d{2,5}\)?[\s-]?\d{3,5}[\s-]?\d{3,5}/);
   const orderMatch = userMessageText.match(/(?:order\s*(?:#|no\.?|num\.?|number)?\s*[:=]?\s*([0-9a-zA-Z-]+))/i);
 
-  // 1. Order status / Order inquiry detection
-  if (lower.includes('order') || lower.includes('staus') || lower.includes('status') || lower.includes('track') || lower.includes('3541') || lower.includes('3542') || !!orderMatch) {
-    let orderNumber = orderMatch ? orderMatch[1] : (userMessageText.match(/\d{3,}/)?.[0] || 'your order');
+  // 1. Order status / Order inquiry detection / Human support
+  if (lower.includes('order') || lower.includes('staus') || lower.includes('status') || lower.includes('track') || lower.includes('3541') || lower.includes('3542') || !!orderMatch || lower.includes('agent') || lower.includes('human') || lower.includes('ticket')) {
+    let orderNumber = orderMatch ? orderMatch[1] : (userMessageText.match(/\d{3,}/)?.[0] || undefined);
+    let orderDisplay = orderNumber ? `Order #${orderNumber}` : 'your order';
     let projectType = lower.includes('vector') ? 'Vector Art' : lower.includes('digitiz') ? 'Embroidery Digitizing' : 'Digitizing/Vector';
 
-    if (isAnyAgentOnline) {
-      return {
-        aiResponseText: `I see you are inquiring about ${projectType} order #${orderNumber}. Let me switch you directly to our online technical support specialist now to check your production status.`,
-        confidenceScore: 95,
-        shouldEscalate: true,
-        escalationReason: `Customer asking about ${projectType} order #${orderNumber}. Online agent available.`,
-        languageDetected: 'English',
-        isHumanRequested: true,
-        extractedDetails: {
-          orderNumber: orderNumber,
-          projectType: lower.includes('vector') ? 'vector' : 'digitizing',
-          email: emailMatch ? emailMatch[0] : undefined,
-          phone: phoneMatch ? phoneMatch[0] : undefined
-        }
-      };
-    } else {
-      return {
-        aiResponseText: `Our live technical support agent is currently busy assisting other clients. We have generated a support ticket for your inquiry regarding ${projectType} order #${orderNumber} and notified our administration team. Our admin will personally review your request and contact you as soon as possible (ASAP). Please make sure to leave your email or phone number if you haven't already.`,
-        confidenceScore: 95,
-        shouldEscalate: true,
-        escalationReason: `Customer inquiring about order #${orderNumber}. Live agents busy/offline, auto-ticket generated.`,
-        languageDetected: 'English',
-        isHumanRequested: true,
-        extractedDetails: {
-          orderNumber: orderNumber,
-          projectType: lower.includes('vector') ? 'vector' : 'digitizing',
-          email: emailMatch ? emailMatch[0] : undefined,
-          phone: phoneMatch ? phoneMatch[0] : undefined
-        }
-      };
-    }
+    const problemDesc = `Customer inquiry for ${projectType} ${orderDisplay}. Message: "${userMessageText}"`;
+
+    return {
+      aiResponseText: `I have noted your inquiry regarding ${orderDisplay} and generated Support Ticket {{TICKET_NUMBER}} for you.\n\nOur administrative team has been notified immediately via high-priority email alert (aacreativeemb@gmail.com). An administrator will review your order details and contact you directly to resolve this promptly.\n\nIf you haven't shared your email address or phone number yet, please drop it here so we can update you directly!`,
+      confidenceScore: 95,
+      shouldEscalate: true,
+      requiresTicket: true,
+      problemSummary: problemDesc,
+      escalationReason: problemDesc,
+      languageDetected: 'English',
+      isHumanRequested: true,
+      extractedDetails: {
+        orderNumber: orderNumber,
+        projectType: lower.includes('vector') ? 'vector' : 'digitizing',
+        email: emailMatch ? emailMatch[0] : undefined,
+        phone: phoneMatch ? phoneMatch[0] : undefined
+      }
+    };
   }
 
   // 2. Pricing and Quote inquiries
