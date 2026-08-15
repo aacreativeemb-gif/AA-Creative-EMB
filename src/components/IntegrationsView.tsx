@@ -18,7 +18,10 @@ import {
 export const EmailConfigForm: React.FC = () => {
   const [smtpUser, setSmtpUser] = useState('aacreativeemb@gmail.com');
   const [smtpPass, setSmtpPass] = useState('');
+  const [resendApiKey, setResendApiKey] = useState('');
   const [hasPassword, setHasPassword] = useState(false);
+  const [hasResendKey, setHasResendKey] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -29,6 +32,7 @@ export const EmailConfigForm: React.FC = () => {
       .then(data => {
         if (data.smtpUser) setSmtpUser(data.smtpUser);
         setHasPassword(data.hasPassword);
+        setHasResendKey(data.hasResendKey);
       })
       .catch(() => {});
   }, []);
@@ -43,14 +47,17 @@ export const EmailConfigForm: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           smtpUser,
-          smtpPass: smtpPass || undefined
+          smtpPass: smtpPass || undefined,
+          resendApiKey: resendApiKey || undefined
         })
       });
       const data = await res.json();
       if (data.success) {
         if (smtpPass) setHasPassword(true);
+        if (resendApiKey) setHasResendKey(true);
         setSmtpPass('');
-        setStatusMessage({ type: 'success', text: '✅ Google App Password saved securely! Live emails are now enabled.' });
+        setResendApiKey('');
+        setStatusMessage({ type: 'success', text: '✅ Email configuration saved successfully! Ready to test.' });
       } else {
         setStatusMessage({ type: 'error', text: data.error || 'Failed to save settings.' });
       }
@@ -91,12 +98,12 @@ export const EmailConfigForm: React.FC = () => {
       if (err.name === 'AbortError') {
         setStatusMessage({
           type: 'error',
-          text: '❌ Connection timed out after 12s. Cloud host took too long to connect to Gmail SMTP. Please check if your 16-digit Google App Password is correct or try again.'
+          text: '❌ Connection timed out. Please check your credentials or try again.'
         });
       } else {
         setStatusMessage({
           type: 'error',
-          text: '❌ Could not connect to mail server. Please verify your Google App Password.'
+          text: '❌ Could not connect to mail server. Please verify your Google App Password or Resend API key.'
         });
       }
     } finally {
@@ -143,7 +150,7 @@ export const EmailConfigForm: React.FC = () => {
             type="text"
             value={smtpPass}
             onChange={e => setSmtpPass(e.target.value)}
-            placeholder={hasPassword ? '•••• •••• •••• •••• (Saved - enter new to change)' : 'Paste 16-digit code here (e.g. abcd efgh ijkl mnop)'}
+            placeholder={hasPassword ? '•••• •••• •••• •••• (Saved - enter new to change)' : 'Paste 16-digit code (e.g. abcd efgh ijkl mnop)'}
             className="w-full bg-slate-50 border-2 border-indigo-300 rounded-lg px-3 py-2 text-xs font-mono text-slate-800 focus:outline-none focus:border-indigo-600 focus:bg-white"
           />
         </div>
@@ -157,18 +164,47 @@ export const EmailConfigForm: React.FC = () => {
             {isSaving ? 'Saving...' : 'Save Password'}
           </button>
         </div>
+
+        {showAdvanced && (
+          <div className="md:col-span-12 p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+            <label className="text-xs font-semibold text-slate-700 flex items-center justify-between">
+              <span>Alternative 100% Guaranteed Cloud Delivery (Resend API Key)</span>
+              {hasResendKey && <span className="text-[10px] text-emerald-600 font-bold">● Resend Key Active</span>}
+            </label>
+            <input
+              type="password"
+              value={resendApiKey}
+              onChange={e => setResendApiKey(e.target.value)}
+              placeholder="re_xxxxxxxxxxxx (Get free at resend.com - works on all clouds)"
+              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs font-mono text-slate-800 focus:outline-none focus:border-indigo-600"
+            />
+            <p className="text-[11px] text-slate-500">
+              Free 3,000 emails/month at <a href="https://resend.com" target="_blank" rel="noreferrer" className="text-indigo-600 underline font-semibold">resend.com</a>. Uses HTTPS port 443 so cloud firewalls never block it.
+            </p>
+          </div>
+        )}
       </form>
 
       <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
-        <button
-          type="button"
-          onClick={handleTestEmail}
-          disabled={isTesting}
-          className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 py-1.5 rounded-lg flex items-center gap-2 transition disabled:opacity-50"
-        >
-          {isTesting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-          Send Test Email to {smtpUser}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleTestEmail}
+            disabled={isTesting}
+            className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 py-1.5 rounded-lg flex items-center gap-2 transition disabled:opacity-50"
+          >
+            {isTesting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+            Send Test Email to {smtpUser}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="text-[11px] text-slate-500 hover:text-slate-800 underline font-medium"
+          >
+            {showAdvanced ? 'Hide Alternative API' : '+ Alternative Cloud Email (Resend)'}
+          </button>
+        </div>
 
         <a
           href="https://myaccount.google.com/apppasswords"

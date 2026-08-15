@@ -1,5 +1,28 @@
 import nodemailer from 'nodemailer';
+import dns from 'dns';
 import { globalStore } from './store';
+
+// Ensure Node.js prefers IPv4 over IPv6 on cloud hosts like Render/Cloud Run
+if (dns && typeof dns.setDefaultResultOrder === 'function') {
+  try {
+    dns.setDefaultResultOrder('ipv4first');
+  } catch {
+    // Ignore if not supported in runtime
+  }
+}
+
+// Helper to resolve IPv4 address for SMTP host
+async function getIpv4Host(hostname: string): Promise<string> {
+  return new Promise((resolve) => {
+    dns.lookup(hostname, { family: 4 }, (err, address) => {
+      if (!err && address) {
+        resolve(address);
+      } else {
+        resolve(hostname);
+      }
+    });
+  });
+}
 
 // Helper to send real emails via SMTP, Gmail App Password, or Resend
 export async function sendAdminEmailNotification({
@@ -18,7 +41,7 @@ export async function sendAdminEmailNotification({
   // Strip all spaces from 16-digit Google App Passwords
   const rawPass = (config.smtpPass || process.env.SMTP_PASS || process.env.EMAIL_PASS || process.env.GMAIL_APP_PASSWORD || '').trim();
   const smtpPass = rawPass.replace(/\s+/g, '');
-  const smtpHost = (config.smtpHost || process.env.SMTP_HOST || 'smtp.gmail.com').trim();
+  const rawHost = (config.smtpHost || process.env.SMTP_HOST || 'smtp.gmail.com').trim();
   const resendApiKey = (config.resendApiKey || process.env.RESEND_API_KEY || '').trim();
 
   // 1. Try Resend API if API Key provided
@@ -33,7 +56,7 @@ export async function sendAdminEmailNotification({
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          from: 'AA Creative Embroidery Support <onboarding@resend.dev>',
+          from: 'AA Creative Support <onboarding@resend.dev>',
           to: [to],
           subject,
           text,
@@ -45,9 +68,9 @@ export async function sendAdminEmailNotification({
 
       if (res.ok) {
         console.log(`[RESEND API EMAIL SENT] Dispatched to ${to}: "${subject}"`);
-        return { success: true, method: 'resend' };
+        return { success: true, method: 'Resend API (HTTP 443)' };
       } else {
-        const errorData = await res.json().catch(() => ({}));
+        const errorData: any = await res.json().catch(() => ({}));
         console.error(`[RESEND ERROR] Failed:`, errorData);
       }
     } catch (err: any) {
@@ -55,21 +78,29 @@ export async function sendAdminEmailNotification({
     }
   }
 
-  // 2. Try SMTP with Gmail App Password (with strict timeouts & dual-port fallback)
+  // 2. Try SMTP with Gmail App Password (forced IPv4)
   if (smtpUser && smtpPass) {
-    // Attempt 1: Port 465 (SSL)
+    // Resolve pure IPv4 address or fallback to hostname
+    const resolvedIpv4 = await getIpv4Host(rawHost);
+
+    // Attempt 1: Port 465 (SSL + IPv4)
     try {
       const transporter = nodemailer.createTransport({
-        host: smtpHost,
+        host: resolvedIpv4,
         port: 465,
         secure: true,
         auth: {
           user: smtpUser,
           pass: smtpPass
         },
-        connectionTimeout: 8000,
-        greetingTimeout: 8000,
-        socketTimeout: 8000
+        name: 'aacreativeemb.com',
+        tls: {
+          servername: rawHost,
+          rejectUnauthorized: false
+        },
+        connectionTimeout: 9000,
+        greetingTimeout: 9000,
+        socketTimeout: 9000
       });
 
       await transporter.sendMail({
@@ -80,15 +111,15 @@ export async function sendAdminEmailNotification({
         html
       });
 
-      console.log(`[REAL EMAIL SENT VIA SMTP 465] Dispatched to ${to}: "${subject}"`);
-      return { success: true, method: 'smtp (SSL 465)' };
+      console.log(`[REAL EMAIL SENT VIA GMAIL SMTP 465] Dispatched to ${to}: "${subject}"`);
+      return { success: true, method: 'Gmail SMTP (Port 465 SSL)' };
     } catch (err465: any) {
-      console.warn(`[SMTP 465 Attempt Failed] ${err465.message}, trying Port 587 (STARTTLS)...`);
+      console.warn(`[SMTP 465 Attempt Failed] ${err465.message}, trying Port 587 (STARTTLS IPv4)...`);
 
-      // Attempt 2: Port 587 (STARTTLS)
+      // Attempt 2: Port 587 (STARTTLS + IPv4)
       try {
         const transporter587 = nodemailer.createTransport({
-          host: smtpHost,
+          host: resolvedIpv4,
           port: 587,
           secure: false,
           requireTLS: true,
@@ -96,12 +127,14 @@ export async function sendAdminEmailNotification({
             user: smtpUser,
             pass: smtpPass
           },
-          connectionTimeout: 8000,
-          greetingTimeout: 8000,
-          socketTimeout: 8000,
+          name: 'aacreativeemb.com',
           tls: {
+            servername: rawHost,
             rejectUnauthorized: false
-          }
+          },
+          connectionTimeout: 9000,
+          greetingTimeout: 9000,
+          socketTimeout: 9000
         });
 
         await transporter587.sendMail({
@@ -112,14 +145,14 @@ export async function sendAdminEmailNotification({
           html
         });
 
-        console.log(`[REAL EMAIL SENT VIA SMTP 587] Dispatched to ${to}: "${subject}"`);
-        return { success: true, method: 'smtp (TLS 587)' };
+        console.log(`[REAL EMAIL SENT VIA GMAIL SMTP 587] Dispatched to ${to}: "${subject}"`);
+        return { success: true, method: 'Gmail SMTP (Port 587 TLS)' };
       } catch (err587: any) {
-        console.error(`[SMTP ERROR] Both Port 465 and 587 failed:`, err587.message);
+        console.error(`[SMTP ERROR] IPv4 Port 465 & 587 failed:`, err587.message);
         return {
           success: false,
           method: 'smtp_failed',
-          error: `Google SMTP Error: ${err587.message}. Please make sure 2-Step Verification is active on ${smtpUser} and you generated an App Password from https://myaccount.google.com/apppasswords.`
+          error: `Gmail Connection Failed: ${err587.message}. Tip: If your cloud host blocks SMTP ports, you can also add a free Resend API Key.`
         };
       }
     }
@@ -136,6 +169,7 @@ export async function sendAdminEmailNotification({
   return {
     success: false,
     method: 'no_smtp_configured',
-    error: 'SMTP password / Google App Password is not yet entered in Settings or Environment Variables.'
+    error: 'Google App Password is not yet saved.'
   };
 }
+
