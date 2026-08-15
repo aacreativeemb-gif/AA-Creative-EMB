@@ -3,12 +3,13 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { globalStore } from './server/store';
 import { processCustomerMessageWithAI, generateAiConversationSummary, translateTextToRomanUrdu, polishOrTranslateAgentReply, generateAgentReplySuggestions } from './server/aiEngine';
-import { Message, Conversation, Ticket } from './src/types';
+import { Message, Conversation, Ticket, User } from './src/types';
 import { sendAdminEmailNotification } from './server/mailer';
+import { hashPassword, verifyPassword } from './server/auth';
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -67,7 +68,7 @@ async function startServer() {
         });
       }
 
-      if (!isAdmin && agentUser && password !== 'Admin@123' && password !== globalStore.adminPassword) {
+      if (!isAdmin && agentUser && !verifyPassword(password, agentUser.passwordHash)) {
         return res.status(401).json({
           success: false,
           error: 'Incorrect password for agent account.'
@@ -94,10 +95,11 @@ async function startServer() {
 
     if (isDeviceTrusted) {
       targetUser.status = 'online';
+      const { passwordHash, ...safeUser } = targetUser;
       return res.json({
         success: true,
         token: `aa_token_${Date.now()}`,
-        user: targetUser,
+        user: safeUser,
         trustedDevice: true
       });
     }
@@ -117,7 +119,7 @@ async function startServer() {
     sendAdminEmailNotification({
       to: targetEmail,
       subject: `🔐 AA Creative Support Portal Security Code: ${otpCode}`,
-      text: `Hello,\n\nA sign-in attempt was made to the AA Creative Support Portal.\n\nYour 6-Digit 2FA Verification Code: ${otpCode}\n\nDevice: ${deviceId || 'Web Browser'}\nIP: ${clientIp}\nDate: ${new Date().toUTCString()}\n\nThis code will expire in 15 minutes.\n\n(Master Backup PIN: 992288)\n\nAA Creative Embroidery UK`,
+      text: `Hello,\n\nA sign-in attempt was made to the AA Creative Support Portal.\n\nYour 6-Digit 2FA Verification Code: ${otpCode}\n\nDevice: ${deviceId || 'Web Browser'}\nIP: ${clientIp}\nDate: ${new Date().toUTCString()}\n\nThis code will expire in 15 minutes.\n\nAA Creative Embroidery UK`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; background: #0f172a; color: #ffffff; padding: 24px; border-radius: 12px; border: 1px solid #1e293b;">
           <h2 style="color: #6366f1; margin-top: 0;">AA Creative Support Security</h2>
@@ -125,7 +127,7 @@ async function startServer() {
           <div style="background: #1e293b; padding: 18px; border-radius: 8px; text-align: center; margin: 20px 0;">
             <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #38bdf8; font-family: monospace;">${otpCode}</span>
           </div>
-          <p style="color: #94a3b8; font-size: 12px;">This 6-digit code is valid for 15 minutes. Emergency Backup PIN: <strong>992288</strong>.</p>
+          <p style="color: #94a3b8; font-size: 12px;">This 6-digit code is valid for 15 minutes.</p>
           <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #334155; font-size: 11px; color: #64748b;">
             IP Address: ${clientIp}<br/>
             Time: ${new Date().toUTCString()}
@@ -138,8 +140,7 @@ async function startServer() {
       success: false,
       requires2FA: true,
       email: targetEmail,
-      message: `A 6-digit verification code has been dispatched to ${targetEmail}.`,
-      backupCodeAvailable: true
+      message: `A 6-digit verification code has been dispatched to ${targetEmail}.`
     });
   });
 
@@ -150,13 +151,12 @@ async function startServer() {
     const record = globalStore.activeOtps[targetEmail];
     const cleanCode = code?.toString().trim();
 
-    const isMasterCode = cleanCode === '992288' || cleanCode === '786000' || cleanCode === '123456';
     const isValidOtp = record && record.code === cleanCode && Date.now() <= record.expiresAt;
 
-    if (!isValidOtp && !isMasterCode) {
+    if (!isValidOtp) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid or expired 6-digit verification code. Please check your email or enter Master PIN 992288.'
+        error: 'Invalid or expired 6-digit verification code. Please check your email and try again.'
       });
     }
 
@@ -175,10 +175,11 @@ async function startServer() {
       adminUser.status = 'online';
     }
 
+    const safeAdminUser = adminUser ? (({ passwordHash, ...rest }) => rest)(adminUser) : null;
     return res.json({
       success: true,
       token: `aa_token_${Date.now()}`,
-      user: adminUser,
+      user: safeAdminUser,
       deviceId: deviceId
     });
   });
@@ -321,9 +322,10 @@ async function startServer() {
 
   // Full state endpoint
   app.get('/api/state', (req, res) => {
+    const safeUsers = globalStore.users.map(({ passwordHash, ...rest }) => rest);
     res.json({
       properties: globalStore.properties,
-      users: globalStore.users,
+      users: safeUsers,
       departments: globalStore.departments,
       visitors: globalStore.visitors,
       conversations: globalStore.conversations,
@@ -1060,7 +1062,71 @@ async function startServer() {
     if (status && ['online', 'away', 'offline'].includes(status)) {
       user.status = status;
     }
-    res.json({ success: true, user, users: globalStore.users });
+    const { passwordHash, ...safeUser } = user;
+    const safeUsers = globalStore.users.map(({ passwordHash, ...rest }) => rest);
+    res.json({ success: true, user: safeUser, users: safeUsers });
+  });
+
+  // --- AGENT / TEAM MANAGEMENT ---
+
+  // List agents (never exposes passwordHash)
+  app.get('/api/admin/agents', (req, res) => {
+    const safeUsers = globalStore.users.map(({ passwordHash, ...rest }) => rest);
+    res.json({ success: true, agents: safeUsers });
+  });
+
+  // Add a new agent: name, email, userId (login handle), password
+  app.post('/api/admin/agents', (req, res) => {
+    const { name, email, userId, password, role, departmentIds } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ success: false, error: 'Name, email, and password are required.' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ success: false, error: 'Password must be at least 6 characters.' });
+    }
+
+    const cleanEmail = email.toLowerCase().trim();
+    const emailTaken = globalStore.users.some(u => u.email.toLowerCase() === cleanEmail);
+    if (emailTaken) {
+      return res.status(409).json({ success: false, error: 'An agent with this email already exists.' });
+    }
+
+    const newAgent: User = {
+      id: `user_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      name,
+      email: cleanEmail,
+      userId: userId || cleanEmail,
+      avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`,
+      role: role || 'agent',
+      status: 'offline',
+      departmentIds: departmentIds || [],
+      capacity: 8,
+      activeChatsCount: 0,
+      passwordHash: hashPassword(password)
+    };
+
+    globalStore.users.push(newAgent);
+    globalStore.auditLogs.unshift({
+      id: `log_${Date.now()}`,
+      action: 'Agent Created',
+      details: `New agent added: ${name} (${cleanEmail})`,
+      timestamp: new Date().toISOString(),
+      userName: 'Admin'
+    });
+    globalStore.persist();
+
+    const { passwordHash, ...safeAgent } = newAgent;
+    res.json({ success: true, agent: safeAgent });
+  });
+
+  // Remove an agent
+  app.delete('/api/admin/agents/:id', (req, res) => {
+    const idx = globalStore.users.findIndex(u => u.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ success: false, error: 'Agent not found' });
+    const removed = globalStore.users.splice(idx, 1)[0];
+    globalStore.persist();
+    res.json({ success: true, removedId: removed.id });
   });
 
   // Save AI Settings & Knowledge
