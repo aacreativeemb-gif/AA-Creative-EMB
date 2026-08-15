@@ -465,6 +465,15 @@ async function startServer() {
             conv.priority = 'high';
 
             const ticketNumber = `TKT-${1000 + globalStore.tickets.length + 1}`;
+            
+            // If visitor provided email or phone in message, update visitor record
+            if (aiResult.extractedDetails?.email && visitor.email.includes('@guest.aaemb.com')) {
+              visitor.email = aiResult.extractedDetails.email;
+            }
+
+            const customerPhone = aiResult.extractedDetails?.phone || visitor.phone || 'Not provided in chat';
+            const orderInfo = aiResult.extractedDetails?.orderNumber ? `Order #: ${aiResult.extractedDetails.orderNumber} (${aiResult.extractedDetails.projectType || 'Digitizing/Vector'})` : 'Inquiry / General Support';
+
             const newTicket: Ticket = {
               id: `tkt_${Date.now()}`,
               ticketNumber,
@@ -472,8 +481,8 @@ async function startServer() {
               visitorId: visitor.id,
               visitorName: visitor.name,
               visitorEmail: visitor.email,
-              subject: `Customer Support Inquiry: ${text.slice(0, 50)}...`,
-              description: `Customer Message: "${text}"\n\nLocation: ${visitor.location.city}, ${visitor.location.country}\nIP: ${visitor.ip}\nChannel: ${conv.channel}\nChat ID: ${conv.id}`,
+              subject: `${orderInfo} - ${visitor.name}`,
+              description: `Customer Message: "${text}"\n\nProject / Order: ${orderInfo}\nCustomer Phone: ${customerPhone}\nCustomer Email: ${visitor.email}\nLocation: ${visitor.location.city}, ${visitor.location.country}\nIP: ${visitor.ip}\nChannel: ${conv.channel}\nChat ID: ${conv.id}`,
               priority: 'high',
               status: 'open',
               departmentId: 'dept_support',
@@ -488,6 +497,14 @@ async function startServer() {
 
             globalStore.tickets.unshift(newTicket);
             globalStore.analytics.openTicketsCount = globalStore.tickets.filter(t => t.status === 'open').length;
+
+            // Ensure the AI message clearly mentions the generated ticket number
+            const customizedReply = `Our live technical support agent is currently busy assisting other clients. We have generated support ticket #${ticketNumber} for your inquiry and notified our administration team. Our admin will personally review your request and contact you as soon as possible (ASAP).`;
+            
+            if (aiMessage) {
+              aiMessage.text = customizedReply;
+              conv.lastMessageText = customizedReply;
+            }
 
             const systemTicketMsg: Message = {
               id: `msg_${Date.now()}_sys`,
@@ -506,7 +523,7 @@ async function startServer() {
             sendAdminEmailNotification({
               to: 'aacreativeemb@gmail.com',
               subject: `🎫 [New Ticket #${ticketNumber}] Customer Issue: ${visitor.name} (${visitor.location.country})`,
-              text: `Hello Admin,\n\nA customer inquiry required support while no live agents were online.\nA new support ticket has been generated.\n\nTicket: #${ticketNumber}\nCustomer: ${visitor.name} (${visitor.email})\nLocation: ${visitor.location.city}, ${visitor.location.country} (IP: ${visitor.ip})\n\nCustomer Message/Problem:\n"${text}"\n\nPlease log in to https://chat.aacreativeemb.com or reply directly to the customer ASAP.\n\nAA Creative Support Desk`,
+              text: `Hello Admin,\n\nA customer inquiry required support while no live agents were online.\nA new support ticket has been generated.\n\nTicket: #${ticketNumber}\nCustomer: ${visitor.name} (${visitor.email})\nPhone: ${customerPhone}\nOrder: ${orderInfo}\nLocation: ${visitor.location.city}, ${visitor.location.country} (IP: ${visitor.ip})\n\nCustomer Message/Problem:\n"${text}"\n\nPlease log in to https://chat.aacreativeemb.com or reply directly to the customer ASAP.\n\nAA Creative Support Desk`,
               html: `
                 <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #0f172a; color: #ffffff; padding: 24px; border-radius: 12px; border: 1px solid #1e293b;">
                   <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #334155; padding-bottom: 12px; margin-bottom: 16px;">
@@ -530,6 +547,14 @@ async function startServer() {
                     <tr>
                       <td style="padding: 6px 0; border-bottom: 1px solid #334155;"><strong>Email:</strong></td>
                       <td style="padding: 6px 0; border-bottom: 1px solid #334155; color: #38bdf8; text-align: right;">${visitor.email}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0; border-bottom: 1px solid #334155;"><strong>Phone:</strong></td>
+                      <td style="padding: 6px 0; border-bottom: 1px solid #334155; color: #ffffff; text-align: right;">${customerPhone}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0; border-bottom: 1px solid #334155;"><strong>Order / Service:</strong></td>
+                      <td style="padding: 6px 0; border-bottom: 1px solid #334155; color: #a855f7; text-align: right;">${orderInfo}</td>
                     </tr>
                     <tr>
                       <td style="padding: 6px 0; border-bottom: 1px solid #334155;"><strong>Location:</strong></td>
