@@ -29,85 +29,83 @@ export interface AiProcessResult {
     projectType?: 'digitizing' | 'vector' | 'other';
     email?: string;
     phone?: string;
+    name?: string;
   };
 }
 
 export async function processCustomerMessageWithAI(
   conversationId: string,
   userMessageText: string,
-  previousMessages: Message[]
+  previousMessages: Message[],
+  visitorName?: string,
+  visitorEmail?: string
 ): Promise<AiProcessResult> {
   const settings = globalStore.aiSettings;
   const lowerText = userMessageText.toLowerCase().trim();
 
-  // Extract potential phone or email or order from message
+  // Extract potential phone or email or order or name from message
   const emailMatch = userMessageText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
   const phoneMatch = userMessageText.match(/(?:\+?\d{1,4}[\s-]?)?\(?\d{2,5}\)?[\s-]?\d{3,5}[\s-]?\d{3,5}/);
   const orderMatch = userMessageText.match(/(?:order\s*(?:#|no\.?|num\.?|number)?\s*[:=]?\s*([0-9a-zA-Z-]+))/i) || userMessageText.match(/(?:#\s*([0-9a-zA-Z-]+))/);
   const extractedOrderNum = orderMatch ? orderMatch[1] : (userMessageText.match(/\b\d{3,7}\b/)?.[0] || undefined);
 
-  // Check for order queries, explicit ticket request, missing info, complaints, human support
-  const escalationKeywords = settings.escalationKeywords || ['agent', 'human', 'human agent', 'refund', 'complaint', 'manager', 'escalate', 'urgently', 'ticket', 'genrate ticket', 'generate ticket', 'live support', 'technical support', 'speak to someone'];
-  const isExplicitHumanRequested = escalationKeywords.some(kw => lowerText.includes(kw.toLowerCase()));
-  const isOrderQuery = lowerText.includes('order') || lowerText.includes('staus') || lowerText.includes('status') || lowerText.includes('track') || lowerText.includes('find my') || lowerText.includes('find order') || !!extractedOrderNum;
-
-  // 1. If customer asks about order status or explicit human agent or ticket
-  if (isExplicitHumanRequested || isOrderQuery) {
-    const orderNumText = extractedOrderNum ? `#${extractedOrderNum}` : 'your order';
-    const problemDetail = isOrderQuery 
-      ? `Customer requested status & details for Order ${orderNumText}. Inquiry: "${userMessageText}"`
-      : `Customer requested urgent human support/ticket. Inquiry: "${userMessageText}"`;
-
-    const summary = await generateAiConversationSummary(userMessageText, previousMessages, problemDetail);
-
-    const proactiveReply = `I have logged your request regarding Order ${orderNumText} and generated Support Ticket {{TICKET_NUMBER}} for you.\n\nOur administration team has been immediately notified via high-priority email at aacreativeemb@gmail.com with your problem details. An administrator will review your order records and contact you promptly to resolve this.\n\nIf you haven't already provided your email address or phone number, please share it here so we can update you directly!`;
-
-    return {
-      aiResponseText: proactiveReply,
-      confidenceScore: 95,
-      shouldEscalate: true,
-      requiresTicket: true,
-      problemSummary: problemDetail,
-      escalationReason: problemDetail,
-      languageDetected: 'English',
-      isHumanRequested: true,
-      aiSummary: summary,
-      extractedDetails: {
-        orderNumber: extractedOrderNum,
-        projectType: lowerText.includes('vector') ? 'vector' : lowerText.includes('digitiz') ? 'digitizing' : undefined,
-        email: emailMatch ? emailMatch[0] : undefined,
-        phone: phoneMatch ? phoneMatch[0] : undefined
-      }
-    };
+  // Extract name if user states "my name is...", "i am...", "this is..."
+  let extractedName: string | undefined = undefined;
+  const namePattern = /(?:my name is|i am|this is|i'm|name:)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)/i;
+  const nameMatch = userMessageText.match(namePattern);
+  if (nameMatch && nameMatch[1]) {
+    const rawName = nameMatch[1].trim();
+    if (!['here', 'looking', 'interested', 'asking', 'inquiring', 'trying', 'wanting', 'writing'].includes(rawName.toLowerCase())) {
+      extractedName = rawName;
+    }
   }
 
-  // 2. Call Gemini model gemini-2.5-flash for intelligent response + confidence scoring
+  const isGuestEmail = !visitorEmail || visitorEmail.includes('@guest.aaemb.com') || visitorEmail.includes('visitor@example.com');
+  const isGuestName = !visitorName || visitorName === 'Website Visitor' || visitorName === 'Visitor' || visitorName.startsWith('Visitor #');
+
+  // Check how many messages exchanged
+  const visitorMessagesCount = previousMessages.filter(m => m.senderType === 'visitor').length;
+
+  // 2. Call Gemini model gemini-2.5-flash for intelligent conversational support & lead qualification
   if (process.env.GEMINI_API_KEY) {
     try {
-      const systemPrompt = `You are a professional, friendly, and expert customer support specialist at '${settings.businessName}' (AA Creative Embroidery UK).
-CRITICAL DIRECTIVES:
-1. ALWAYS speak to the customer strictly as a real customer service executive in professional UK/US English.
-2. NEVER speak or reply in Urdu or Roman Urdu to the customer. All customer responses MUST be in English.
-3. NEVER say "I am an AI", "As an AI model", "I am a bot". Use "I", "we", "our team", and "our production digitizers".
-4. When a customer asks about their order status, a specific order number (e.g. 3541), billing, refund, custom request, or anything you do not have in knowledge base:
-   - Set "shouldEscalate": true
-   - Set "requiresTicket": true
-   - Set "problemSummary": clear, detailed summary of the customer's problem
-   - In "responseText", discuss their problem directly in English, inform them that Support Ticket {{TICKET_NUMBER}} has been generated for their inquiry, our administration team has been immediately notified via email (aacreativeemb@gmail.com), and an administrator will contact them promptly to resolve it. Ask for their email/phone if missing.
-5. For standard questions (pricing, turnaround 2-6 hrs, formats DST/PES/EMB/Vector AI/EPS, revisions), answer helpfully in English.
+      const systemPrompt = `You are a professional, polite, and expert customer support specialist at '${settings.businessName}' (AA Creative Embroidery UK).
+
+CRITICAL INTERACTION FLOW:
+1. GREETING & PROJECT INQUIRY:
+   - When a visitor first starts chatting (greeting / hello / new query), warmly welcome them:
+     "Hello! Welcome to AA Creative Embroidery. Which project can we assist you with today — Embroidery Digitizing or Vector Art Conversion?"
+2. POLITE LEAD QUALIFICATION (ASK NAME & EMAIL):
+   - When the customer explains what project or question they have, answer/acknowledge their project politely and then warmly ask for their Name and Email address so we can save their details and send them proof/quote updates:
+     "May I know your name and email address so we can save your project details and send you your quote/updates directly?"
+3. TICKET CREATION & ESCALATION:
+   - When a customer asks about an order status (e.g. order #3541), has an urgent technical problem, requests a human agent, asks for a refund/change, or provides their issue:
+     - Set "shouldEscalate": true
+     - Set "requiresTicket": true
+     - Set "problemSummary": clear, comprehensive description of the customer's problem/request
+     - In "responseText", address them by name (if known), inform them that Support Ticket {{TICKET_NUMBER}} has been created, our administration team has been notified via email (aacreativeemb@gmail.com), and an automated confirmation email has been dispatched to their email address with full ticket details.
+
+GENERAL RULES:
+- ALWAYS speak in professional UK/US English.
+- NEVER speak or reply in Urdu/Roman Urdu to the customer. All customer responses MUST be in English.
+- NEVER say "I am an AI", "As an AI model", or "I am a bot". Use "I", "we", "our team", and "our production digitizers".
+- Extract any email, phone, name, or order number provided in the chat into the schema.
 
 BUSINESS KNOWLEDGE:
 - Description: ${settings.description}
 - Products & Pricing: ${settings.productsAndServices}
-- Pricing & Taxes: ${settings.pricingInfo}
-- FAQs: ${settings.faqsText}
-- Return & Refund Policy: ${settings.returnRefundPolicy}
-- Turnaround: 2-6 hours standard, 2-hour express rush available.
-- Contact: aacreativeemb@gmail.com, +44 7462 23 8732
+- Pricing: Cap & Left chest digitizing from £4 / $5 (2-6 hour express). Vector art from £5 / $7.
+- Turnaround: 2-6 hours standard, 2-hour super rush express available. Formats: DST, PES, EMB, EXP, JEF, Vector AI, EPS, SVG, PDF.
+- Admin Email: aacreativeemb@gmail.com, Phone/WhatsApp: +44 7462 23 8732
+
+Current Customer Info:
+- Known Name: ${isGuestName ? 'Unknown' : visitorName}
+- Known Email: ${isGuestEmail ? 'Unknown' : visitorEmail}
+- Messages Exchanged: ${visitorMessagesCount}
 
 Respond STRICTLY in JSON format matching the schema provided.`;
 
-      const formattedHistory = previousMessages.slice(-6).map(m => `${m.senderName} (${m.senderType}): ${m.text}`).join('\n');
+      const formattedHistory = previousMessages.slice(-8).map(m => `${m.senderName} (${m.senderType}): ${m.text}`).join('\n');
       const prompt = `Conversation History:\n${formattedHistory}\n\nLatest Customer Message: "${userMessageText}"`;
 
       const response = await ai.models.generateContent({
@@ -121,7 +119,7 @@ Respond STRICTLY in JSON format matching the schema provided.`;
             properties: {
               responseText: {
                 type: Type.STRING,
-                description: 'The customer support response in professional English. If ticket is needed, mention Support Ticket {{TICKET_NUMBER}} and email alert to admin.'
+                description: 'The natural customer support response to send in English.'
               },
               confidenceScore: {
                 type: Type.NUMBER,
@@ -129,19 +127,35 @@ Respond STRICTLY in JSON format matching the schema provided.`;
               },
               shouldEscalate: {
                 type: Type.BOOLEAN,
-                description: 'Set true if user asks for human, order tracking, complaint, unknown info, or complex issue.'
+                description: 'Set true if user asks for order status, human agent, technical complaint, or ticket generation.'
               },
               requiresTicket: {
                 type: Type.BOOLEAN,
-                description: 'Set true if support ticket should be generated and emailed to admin.'
+                description: 'Set true if a support ticket should be created and emails sent to admin and customer.'
               },
               problemSummary: {
                 type: Type.STRING,
-                description: 'Detailed description of the customer problem for admin email.'
+                description: 'Detailed description of the customer problem for ticket and email notifications.'
               },
               escalationReason: {
                 type: Type.STRING,
                 description: 'Reason for escalation if applicable.'
+              },
+              extractedCustomerName: {
+                type: Type.STRING,
+                description: 'Extracted customer first/full name if mentioned.'
+              },
+              extractedEmail: {
+                type: Type.STRING,
+                description: 'Extracted customer email if provided.'
+              },
+              extractedPhone: {
+                type: Type.STRING,
+                description: 'Extracted customer phone if provided.'
+              },
+              extractedOrderNumber: {
+                type: Type.STRING,
+                description: 'Extracted order number if provided.'
               },
               customerSentiment: {
                 type: Type.STRING,
@@ -149,7 +163,7 @@ Respond STRICTLY in JSON format matching the schema provided.`;
               },
               extractedIntent: {
                 type: Type.STRING,
-                description: 'Short summary of intent e.g. Order Tracking.'
+                description: 'Short summary of intent e.g. Lead Qualification, Order Tracking, Quote Inquiry.'
               }
             },
             required: ['responseText', 'confidenceScore', 'shouldEscalate', 'customerSentiment', 'extractedIntent']
@@ -160,24 +174,29 @@ Respond STRICTLY in JSON format matching the schema provided.`;
       const jsonText = response.text || '{}';
       const parsed = JSON.parse(jsonText);
 
-      const confidenceScore = parsed.confidenceScore ?? 85;
+      const confidenceScore = parsed.confidenceScore ?? 88;
       const shouldEscalate = parsed.shouldEscalate || confidenceScore < settings.confidenceThreshold;
       const requiresTicket = parsed.requiresTicket || shouldEscalate;
+
+      const finalEmail = emailMatch ? emailMatch[0] : (parsed.extractedEmail || undefined);
+      const finalPhone = phoneMatch ? phoneMatch[0] : (parsed.extractedPhone || undefined);
+      const finalName = extractedName || (parsed.extractedCustomerName && parsed.extractedCustomerName !== 'Unknown' ? parsed.extractedCustomerName : undefined);
+      const finalOrderNum = extractedOrderNum || (parsed.extractedOrderNumber || undefined);
 
       let summary: AiSummary | undefined = undefined;
       if (shouldEscalate) {
         summary = {
           sentiment: parsed.customerSentiment || 'neutral',
           summary: parsed.problemSummary || `Customer inquiry: ${parsed.extractedIntent}. Message: "${userMessageText}"`,
-          extractedIntent: parsed.extractedIntent || 'General Inquiry',
+          extractedIntent: parsed.extractedIntent || 'Support Inquiry',
           confidenceScore: confidenceScore,
-          recommendedAction: 'Review customer details and contact directly ASAP.',
-          escalationReason: parsed.escalationReason || (confidenceScore < settings.confidenceThreshold ? 'Low AI confidence score.' : 'Customer query.')
+          recommendedAction: 'Review customer ticket and reply promptly via email or chat.',
+          escalationReason: parsed.escalationReason || 'Customer query or ticket escalation.'
         };
       }
 
       return {
-        aiResponseText: parsed.responseText || "Thank you for contacting AA Creative Embroidery! I have received your message. How can I help with your digitizing or vector project?",
+        aiResponseText: parsed.responseText || "Thank you for reaching out to AA Creative Embroidery! How can we assist you with your digitizing or vector artwork today?",
         confidenceScore,
         shouldEscalate,
         requiresTicket,
@@ -187,10 +206,11 @@ Respond STRICTLY in JSON format matching the schema provided.`;
         isHumanRequested: false,
         aiSummary: summary,
         extractedDetails: {
-          orderNumber: extractedOrderNum,
+          orderNumber: finalOrderNum,
           projectType: lowerText.includes('vector') ? 'vector' : lowerText.includes('digitiz') ? 'digitizing' : undefined,
-          email: emailMatch ? emailMatch[0] : undefined,
-          phone: phoneMatch ? phoneMatch[0] : undefined
+          email: finalEmail,
+          phone: finalPhone,
+          name: finalName
         }
       };
     } catch (error) {
@@ -198,8 +218,8 @@ Respond STRICTLY in JSON format matching the schema provided.`;
     }
   }
 
-  // Fallback
-  return getFallbackAiResponse(userMessageText, previousMessages);
+  // Fallback Rule-Based Engine
+  return getFallbackAiResponse(userMessageText, previousMessages, visitorName, visitorEmail);
 }
 
 export async function generateAiConversationSummary(
@@ -264,7 +284,12 @@ function detectLanguage(text: string): string {
   return 'English';
 }
 
-function getFallbackAiResponse(userMessageText: string, previousMessages: Message[]): AiProcessResult {
+function getFallbackAiResponse(
+  userMessageText: string,
+  previousMessages: Message[],
+  visitorName?: string,
+  visitorEmail?: string
+): AiProcessResult {
   const lower = userMessageText.toLowerCase().trim();
   const onlineAgents = globalStore.users.filter(u => u.status === 'online');
   const isAnyAgentOnline = onlineAgents.length > 0;
@@ -273,16 +298,32 @@ function getFallbackAiResponse(userMessageText: string, previousMessages: Messag
   const phoneMatch = userMessageText.match(/(?:\+?\d{1,4}[\s-]?)?\(?\d{2,5}\)?[\s-]?\d{3,5}[\s-]?\d{3,5}/);
   const orderMatch = userMessageText.match(/(?:order\s*(?:#|no\.?|num\.?|number)?\s*[:=]?\s*([0-9a-zA-Z-]+))/i);
 
-  // 1. Order status / Order inquiry detection / Human support
+  // Extract name if provided
+  let extractedName: string | undefined = undefined;
+  const nameMatch = userMessageText.match(/(?:my name is|i am|this is|i'm|name:)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)/i);
+  if (nameMatch && nameMatch[1]) {
+    const raw = nameMatch[1].trim();
+    if (!['here', 'looking', 'interested', 'asking', 'inquiring'].includes(raw.toLowerCase())) {
+      extractedName = raw;
+    }
+  }
+
+  const isGuestEmail = !visitorEmail || visitorEmail.includes('@guest.aaemb.com') || visitorEmail.includes('visitor@example.com');
+  const isGuestName = !visitorName || visitorName === 'Website Visitor' || visitorName === 'Visitor';
+
+  // 1. Order status / Order inquiry detection / Human support / Ticket request
   if (lower.includes('order') || lower.includes('staus') || lower.includes('status') || lower.includes('track') || lower.includes('3541') || lower.includes('3542') || !!orderMatch || lower.includes('agent') || lower.includes('human') || lower.includes('ticket')) {
     let orderNumber = orderMatch ? orderMatch[1] : (userMessageText.match(/\d{3,}/)?.[0] || undefined);
     let orderDisplay = orderNumber ? `Order #${orderNumber}` : 'your order';
     let projectType = lower.includes('vector') ? 'Vector Art' : lower.includes('digitiz') ? 'Embroidery Digitizing' : 'Digitizing/Vector';
 
-    const problemDesc = `Customer inquiry for ${projectType} ${orderDisplay}. Message: "${userMessageText}"`;
+    const problemDesc = `Customer inquiry for ${projectType} ${orderDisplay}. Inquiry: "${userMessageText}"`;
+
+    const greetingName = extractedName || (!isGuestName ? visitorName : '');
+    const personalizedHello = greetingName ? `Thank you, ${greetingName}! ` : '';
 
     return {
-      aiResponseText: `I have noted your inquiry regarding ${orderDisplay} and generated Support Ticket {{TICKET_NUMBER}} for you.\n\nOur administrative team has been notified immediately via high-priority email alert (aacreativeemb@gmail.com). An administrator will review your order details and contact you directly to resolve this promptly.\n\nIf you haven't shared your email address or phone number yet, please drop it here so we can update you directly!`,
+      aiResponseText: `${personalizedHello}I have noted your inquiry regarding ${orderDisplay} and generated Support Ticket {{TICKET_NUMBER}} for you.\n\nOur administrative team has been notified immediately via high-priority email alert (aacreativeemb@gmail.com). We have also logged your request to send a confirmation directly to your email address. An administrator will review your order details and contact you directly to resolve this promptly.`,
       confidenceScore: 95,
       shouldEscalate: true,
       requiresTicket: true,
@@ -294,15 +335,34 @@ function getFallbackAiResponse(userMessageText: string, previousMessages: Messag
         orderNumber: orderNumber,
         projectType: lower.includes('vector') ? 'vector' : 'digitizing',
         email: emailMatch ? emailMatch[0] : undefined,
-        phone: phoneMatch ? phoneMatch[0] : undefined
+        phone: phoneMatch ? phoneMatch[0] : undefined,
+        name: extractedName
       }
     };
   }
 
-  // 2. Pricing and Quote inquiries
-  if (lower.includes('quote') || lower.includes('price') || lower.includes('cost') || lower.includes('rate') || lower.includes('how much')) {
+  // 2. If user provides name or email in response to inquiry
+  if (emailMatch || extractedName) {
+    const thankName = extractedName || (emailMatch ? 'there' : 'friend');
     return {
-      aiResponseText: "Our standard embroidery digitizing rates start from £4 / $5 for cap and left chest logos with 2-6 hour express turnaround. Vector art conversions start from £5 / $7. You can upload your design directly in this chat, or email admin@aacreativeemb.com / WhatsApp (+44 7462 23 8732) for an instant quote!",
+      aiResponseText: `Thank you for sharing your details! We have saved your contact information. How can we assist you with your project today? Feel free to share your artwork requirements, order number, or ask for a free quote.`,
+      confidenceScore: 95,
+      shouldEscalate: false,
+      languageDetected: 'English',
+      isHumanRequested: false,
+      extractedDetails: {
+        email: emailMatch ? emailMatch[0] : undefined,
+        phone: phoneMatch ? phoneMatch[0] : undefined,
+        name: extractedName
+      }
+    };
+  }
+
+  // 3. Pricing and Quote inquiries
+  if (lower.includes('quote') || lower.includes('price') || lower.includes('cost') || lower.includes('rate') || lower.includes('how much') || lower.includes('digitiz') || lower.includes('vector')) {
+    const askContact = isGuestEmail ? "\n\nMay I also know your name and email address so we can save your project specifications and send you your official quote sheet?" : "";
+    return {
+      aiResponseText: `Our standard embroidery digitizing rates start from £4 / $5 for cap and left chest logos with 2-6 hour express turnaround. Vector art conversions start from £5 / $7 with Tajima DST, PES, EMB, and vector AI/EPS formats included.${askContact}`,
       confidenceScore: 95,
       shouldEscalate: false,
       languageDetected: 'English',
@@ -310,8 +370,8 @@ function getFallbackAiResponse(userMessageText: string, previousMessages: Messag
     };
   }
 
-  // 3. File formats
-  if (lower.includes('format') || lower.includes('dst') || lower.includes('pes') || lower.includes('emb') || lower.includes('exp') || lower.includes('jef') || lower.includes('vector') || lower.includes('eps') || lower.includes('ai') || lower.includes('svg')) {
+  // 4. File formats
+  if (lower.includes('format') || lower.includes('dst') || lower.includes('pes') || lower.includes('emb') || lower.includes('exp') || lower.includes('jef') || lower.includes('eps') || lower.includes('ai') || lower.includes('svg')) {
     return {
       aiResponseText: "We provide all industry standard embroidery formats including Tajima DST, Brother PES, Wilcom EMB source files, Melco EXP, Janome JEF, and high-res vector files (AI, EPS, SVG, PDF) with a comprehensive stitch proof PDF sheet!",
       confidenceScore: 95,
@@ -321,7 +381,7 @@ function getFallbackAiResponse(userMessageText: string, previousMessages: Messag
     };
   }
 
-  // 4. Turnaround time
+  // 5. Turnaround time
   if (lower.includes('turnaround') || lower.includes('time') || lower.includes('fast') || lower.includes('rush') || lower.includes('delivery') || lower.includes('how long')) {
     return {
       aiResponseText: "Our standard turnaround time is 2 to 6 hours. We also offer 2-hour super rush express delivery with no extra quality compromise!",
@@ -332,20 +392,20 @@ function getFallbackAiResponse(userMessageText: string, previousMessages: Messag
     };
   }
 
-  // 5. General greetings or help
-  if (lower.includes('hi') || lower.includes('hello') || lower.includes('hey') || lower.includes('good morning') || lower.includes('good afternoon') || lower.includes('help')) {
+  // 6. Initial greeting (Hello! Welcome to AA Creative Embroidery...)
+  if (lower.includes('hi') || lower.includes('hello') || lower.includes('hey') || lower.includes('good morning') || lower.includes('good afternoon') || lower.includes('help') || previousMessages.length <= 1) {
     return {
       aiResponseText: "Hello! Welcome to AA Creative Embroidery. Which project can we assist you with today — Embroidery Digitizing or Vector Art Conversion?",
-      confidenceScore: 90,
+      confidenceScore: 95,
       shouldEscalate: false,
       languageDetected: 'English',
       isHumanRequested: false
     };
   }
 
-  // Default helpful response
+  // Default polite qualification
   return {
-    aiResponseText: "Thank you for reaching out to AA Creative Embroidery! Are you looking for Embroidery Digitizing (DST, PES, EMB) or Vector Art Conversion (AI, EPS, SVG)? Let us know how we can help!",
+    aiResponseText: "Thank you for reaching out to AA Creative Embroidery! Are you looking for Embroidery Digitizing (DST, PES, EMB) or Vector Art Conversion (AI, EPS, SVG)? May I know your name and email address so we can save your project details?",
     confidenceScore: 85,
     shouldEscalate: false,
     languageDetected: 'English',

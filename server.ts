@@ -596,15 +596,29 @@ async function startServer() {
         const aiResult = await processCustomerMessageWithAI(
           conv.id,
           text,
-          globalStore.messages[conv.id]
+          globalStore.messages[conv.id],
+          visitor.name,
+          visitor.email
         );
+
+        // If AI extracted customer name or email or phone from chat, update visitor record immediately
+        if (aiResult.extractedDetails?.name && (visitor.name === 'Website Visitor' || visitor.name.startsWith('Visitor #'))) {
+          visitor.name = aiResult.extractedDetails.name;
+          visitorMsg.senderName = visitor.name;
+        }
+        if (aiResult.extractedDetails?.email && (visitor.email.includes('@guest.aaemb.com') || visitor.email.includes('visitor@example.com'))) {
+          visitor.email = aiResult.extractedDetails.email;
+        }
+        if (aiResult.extractedDetails?.phone && !visitor.phone) {
+          visitor.phone = aiResult.extractedDetails.phone;
+        }
 
         aiMessage = {
           id: `msg_${Date.now()}_ai`,
           conversationId: conv.id,
           senderType: 'ai',
           senderId: 'ai_assistant',
-          senderName: globalStore.aiSettings.aiName || 'AI Support Assistant',
+          senderName: globalStore.aiSettings.aiName || 'AA Support Specialist',
           text: aiResult.aiResponseText,
           timestamp: new Date().toISOString(),
           deliveryStatus: 'delivered',
@@ -636,20 +650,12 @@ async function startServer() {
           
           // If AI text didn't explicitly include the ticket number, format a clean message
           if (!finalAiResponse.includes(ticketNumber)) {
-            finalAiResponse = `${finalAiResponse}\n\n🎫 Support Ticket #${ticketNumber} has been generated for your inquiry. Our administration team (aacreativeemb@gmail.com) has been notified immediately and an administrator will contact you directly to resolve your request ASAP.`;
+            finalAiResponse = `${finalAiResponse}\n\n🎫 Support Ticket #${ticketNumber} has been generated for your inquiry. Our administration team (aacreativeemb@gmail.com) and your email have been notified with full details. An administrator will contact you directly to resolve your request ASAP.`;
           }
 
           if (aiMessage) {
             aiMessage.text = finalAiResponse;
             conv.lastMessageText = finalAiResponse;
-          }
-
-          // If visitor provided email or phone in message, update visitor record
-          if (aiResult.extractedDetails?.email && visitor.email.includes('@guest.aaemb.com')) {
-            visitor.email = aiResult.extractedDetails.email;
-          }
-          if (aiResult.extractedDetails?.phone && !visitor.phone) {
-            visitor.phone = aiResult.extractedDetails.phone;
           }
 
           const customerPhone = aiResult.extractedDetails?.phone || visitor.phone || 'Not provided in chat';
@@ -675,7 +681,7 @@ async function startServer() {
             slaDueDate: new Date(Date.now() + 14400000).toISOString(),
             slaBreached: false,
             source: 'website',
-            tags: ['Auto Ticket', 'High Priority', 'Admin Email Dispatched']
+            tags: ['Auto Ticket', 'High Priority', 'Admin Alerted', 'Customer Confirmation Dispatched']
           };
 
           globalStore.tickets.unshift(newTicket);
@@ -688,7 +694,7 @@ async function startServer() {
             senderType: 'system',
             senderId: 'system',
             senderName: 'Support System',
-            text: `🎫 Support Ticket #${ticketNumber} created. Admin team alerted at aacreativeemb@gmail.com.`,
+            text: `🎫 Support Ticket #${ticketNumber} created. Admin team alerted at aacreativeemb@gmail.com and confirmation emailed to ${visitor.email}.`,
             timestamp: new Date().toISOString(),
             deliveryStatus: 'delivered',
             channel: conv.channel
@@ -754,26 +760,66 @@ async function startServer() {
             `
           });
 
-          // 2. If customer has a real email, send them a confirmation email
-          if (visitor.email && !visitor.email.includes('@guest.aaemb.com')) {
+          // 2. Send professional, styled confirmation email to Customer
+          if (visitor.email && !visitor.email.includes('@guest.aaemb.com') && !visitor.email.includes('visitor@example.com')) {
             sendAdminEmailNotification({
               to: visitor.email,
-              subject: `[Ticket #${ticketNumber}] We received your inquiry - AA Creative Embroidery`,
-              text: `Dear ${visitor.name},\n\nThank you for contacting AA Creative Embroidery.\n\nWe have generated Support Ticket #${ticketNumber} for your inquiry regarding:\n"${problemSummary}"\n\nOur administration and technical support team has been notified and will review your request and contact you shortly to resolve this.\n\nBest regards,\nAA Creative Support Team\naacreativeemb@gmail.com\n+44 7462 23 8732`,
+              subject: `🎫 [Ticket #${ticketNumber}] We received your inquiry - AA Creative Embroidery`,
+              text: `Dear ${visitor.name},\n\nThank you for reaching out to AA Creative Embroidery.\n\nWe have generated Support Ticket #${ticketNumber} for your inquiry regarding:\n"${problemSummary}"\n\nOur administrative and technical production team has been notified and is currently reviewing your details. An administrator will contact you shortly with an update.\n\nTicket Summary:\n- Ticket Number: #${ticketNumber}\n- Status: In Review\n- Priority: High Priority\n- Problem Description: ${problemSummary}\n\nIf you have additional design files or instructions, you can reply directly to this email.\n\nBest regards,\nCustomer Support Team\nAA Creative Embroidery UK Ltd\nEmail: aacreativeemb@gmail.com\nPhone / WhatsApp: +44 7462 23 8732\nWebsite: https://aacreativeemb.com`,
               html: `
-                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 540px; margin: 0 auto; background: #ffffff; color: #1e293b; padding: 24px; border-radius: 10px; border: 1px solid #e2e8f0;">
-                  <h2 style="color: #0f172a; margin-top: 0;">Support Ticket #${ticketNumber} Created</h2>
-                  <p>Dear ${visitor.name},</p>
-                  <p>Thank you for contacting <strong>AA Creative Embroidery</strong>. We have received your request and logged it under Support Ticket <strong>#${ticketNumber}</strong>.</p>
+                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 580px; margin: 0 auto; background: #ffffff; color: #1e293b; padding: 28px; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 4px 16px rgba(0,0,0,0.05);">
                   
-                  <div style="background: #f1f5f9; padding: 14px; border-radius: 6px; margin: 16px 0; border-left: 4px solid #2563eb;">
-                    <div style="font-size: 12px; color: #64748b; font-weight: bold; text-transform: uppercase;">Your Inquiry:</div>
-                    <div style="font-size: 14px; color: #0f172a; margin-top: 4px;">${problemSummary}</div>
+                  <div style="border-bottom: 2px solid #f1f5f9; padding-bottom: 16px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between;">
+                    <div>
+                      <h2 style="color: #1e1b4b; margin: 0; font-size: 20px; font-weight: 700;">AA Creative Embroidery</h2>
+                      <p style="color: #64748b; font-size: 13px; margin: 3px 0 0 0;">Precision Embroidery Digitizing & Vector Art Services</p>
+                    </div>
                   </div>
 
-                  <p>Our management and technical support team will review your order details and contact you directly to resolve this as quickly as possible.</p>
-                  <p style="font-size: 13px; color: #64748b; margin-top: 24px;">If you have additional files or details to share, you can reply directly to this email.</p>
-                  <p style="margin-bottom: 0;">Warm regards,<br><strong>AA Creative Support Team</strong><br>aacreativeemb@gmail.com</p>
+                  <p style="font-size: 15px; color: #334155; margin-top: 0;">Dear <strong>${visitor.name}</strong>,</p>
+                  
+                  <p style="font-size: 14px; color: #475569; line-height: 1.6;">
+                    Thank you for contacting <strong>AA Creative Embroidery</strong>. We have logged your request and generated official Support Ticket <strong>#${ticketNumber}</strong> for you.
+                  </p>
+                  
+                  <div style="background: #f8fafc; padding: 16px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0; border-left: 4px solid #4f46e5;">
+                    <div style="font-size: 11px; font-weight: 700; color: #4f46e5; text-transform: uppercase; letter-spacing: 0.5px;">YOUR INQUIRY SUMMARY:</div>
+                    <div style="font-size: 14px; color: #0f172a; margin-top: 6px; font-weight: 600; line-height: 1.5;">${problemSummary}</div>
+                  </div>
+
+                  <table style="width: 100%; font-size: 13px; color: #475569; border-collapse: collapse; margin-bottom: 24px;">
+                    <tr>
+                      <td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; width: 40%;"><strong>Ticket Number:</strong></td>
+                      <td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; color: #4f46e5; font-weight: 700; text-align: right;">#${ticketNumber}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9;"><strong>Status:</strong></td>
+                      <td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; color: #059669; font-weight: 600; text-align: right;">Assigned to Admin Review</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9;"><strong>Project / Order:</strong></td>
+                      <td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; color: #0f172a; text-align: right;">${orderInfo}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0;"><strong>Customer Name:</strong></td>
+                      <td style="padding: 8px 0; color: #0f172a; font-weight: 600; text-align: right;">${visitor.name}</td>
+                    </tr>
+                  </table>
+
+                  <p style="font-size: 14px; color: #475569; line-height: 1.6;">
+                    Our senior administrative team and digitizers have received this escalation and will contact you directly via this email address to assist you without delay.
+                  </p>
+
+                  <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px; font-size: 12.5px; color: #1e40af; margin-top: 20px;">
+                    💡 <strong>Need urgent updates?</strong> You can reply directly to this email with any attachments, or reach us on WhatsApp at <strong>+44 7462 23 8732</strong>.
+                  </div>
+
+                  <p style="font-size: 13px; color: #64748b; margin-top: 28px; line-height: 1.5; border-top: 1px solid #f1f5f9; pt-4;">
+                    Warm regards,<br/>
+                    <strong>Customer Support Team</strong><br/>
+                    AA Creative Embroidery UK Ltd<br/>
+                    <a href="mailto:aacreativeemb@gmail.com" style="color: #4f46e5; text-decoration: none;">aacreativeemb@gmail.com</a> | <a href="https://aacreativeemb.com" style="color: #4f46e5; text-decoration: none;">aacreativeemb.com</a>
+                  </p>
                 </div>
               `
             });
@@ -1306,7 +1352,7 @@ async function startServer() {
     savedMsgs.push({
       id: 'welcome_1',
       sender: 'ai',
-      text: 'Hi & Welcome to AA Creative Embroidery! 🧵\\nHow can I help you today? Feel free to ask about digitizing rates, turnaround times, or vector art conversion.',
+      text: 'Hello! Welcome to AA Creative Embroidery. Which project can we assist you with today — Embroidery Digitizing or Vector Art Conversion?',
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     });
   }
