@@ -507,6 +507,7 @@ export default function App() {
             cannedResponses={cannedResponses}
             auditLogs={auditLogs}
             onOpenEmbedModal={() => setShowEmbedModal(true)}
+            onAgentsChanged={fetchState}
           />
         )}
       </main>

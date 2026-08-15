@@ -28,6 +28,8 @@ export interface User {
   departmentIds: string[];
   capacity: number;
   activeChatsCount: number;
+  passwordHash?: string;
+  userId?: string;
 }
 
 export interface Department {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Building2, Users, Code2, Lock, Mail, Send, CheckCircle2, AlertCircle, KeyRound, ExternalLink, RefreshCw } from 'lucide-react';
+import { ShieldCheck, Building2, Users, Code2, Lock, Mail, Send, CheckCircle2, AlertCircle, KeyRound, ExternalLink, RefreshCw, UserPlus, Trash2 } from 'lucide-react';
 import { Property, User as UserType, Department, AuditLog, CannedResponse } from '../types';
 
 interface SettingsViewProps {
@@ -9,6 +9,7 @@ interface SettingsViewProps {
   cannedResponses: CannedResponse[];
   auditLogs: AuditLog[];
   onOpenEmbedModal: () => void;
+  onAgentsChanged?: () => void;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
@@ -17,7 +18,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   departments,
   cannedResponses,
   auditLogs,
-  onOpenEmbedModal
+  onOpenEmbedModal,
+  onAgentsChanged
 }) => {
   const [smtpUser, setSmtpUser] = useState('aacreativeemb@gmail.com');
   const [smtpPass, setSmtpPass] = useState('');
@@ -25,6 +27,55 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // New agent form state
+  const [showAddAgent, setShowAddAgent] = useState(false);
+  const [newAgentName, setNewAgentName] = useState('');
+  const [newAgentEmail, setNewAgentEmail] = useState('');
+  const [newAgentUserId, setNewAgentUserId] = useState('');
+  const [newAgentPassword, setNewAgentPassword] = useState('');
+  const [isAddingAgent, setIsAddingAgent] = useState(false);
+  const [agentFormError, setAgentFormError] = useState<string | null>(null);
+
+  const handleAddAgent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAgentFormError(null);
+    setIsAddingAgent(true);
+    try {
+      const res = await fetch('/api/admin/agents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newAgentName,
+          email: newAgentEmail,
+          userId: newAgentUserId || newAgentEmail,
+          password: newAgentPassword,
+          role: 'agent'
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setAgentFormError(data.error || 'Failed to add agent.');
+        return;
+      }
+      setNewAgentName('');
+      setNewAgentEmail('');
+      setNewAgentUserId('');
+      setNewAgentPassword('');
+      setShowAddAgent(false);
+      if (onAgentsChanged) onAgentsChanged();
+    } catch (err) {
+      setAgentFormError('Connection error. Please try again.');
+    } finally {
+      setIsAddingAgent(false);
+    }
+  };
+
+  const handleRemoveAgent = async (id: string) => {
+    if (!confirm('Remove this agent? They will no longer be able to log in.')) return;
+    await fetch(`/api/admin/agents/${id}`, { method: 'DELETE' });
+    if (onAgentsChanged) onAgentsChanged();
+  };
 
   useEffect(() => {
     fetch('/api/email/config')
@@ -266,9 +317,50 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         {/* Agents & RBAC */}
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-3">
-          <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2 border-b border-slate-100 pb-2">
-            <Users className="w-4 h-4 text-emerald-600" /> Support Agents & Roles
+          <h3 className="font-bold text-slate-800 text-sm flex items-center justify-between border-b border-slate-100 pb-2">
+            <span className="flex items-center gap-2"><Users className="w-4 h-4 text-emerald-600" /> Support Agents & Roles</span>
+            <button
+              onClick={() => setShowAddAgent(v => !v)}
+              className="flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-2.5 py-1 rounded-lg"
+            >
+              <UserPlus className="w-3.5 h-3.5" /> {showAddAgent ? 'Cancel' : 'Add Agent'}
+            </button>
           </h3>
+
+          {showAddAgent && (
+            <form onSubmit={handleAddAgent} className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+              {agentFormError && (
+                <div className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded p-2">{agentFormError}</div>
+              )}
+              <input
+                type="text" required placeholder="Full name"
+                value={newAgentName} onChange={e => setNewAgentName(e.target.value)}
+                className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg"
+              />
+              <input
+                type="email" required placeholder="Email address"
+                value={newAgentEmail} onChange={e => setNewAgentEmail(e.target.value)}
+                className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg"
+              />
+              <input
+                type="text" placeholder="User ID / login handle (optional, defaults to email)"
+                value={newAgentUserId} onChange={e => setNewAgentUserId(e.target.value)}
+                className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg"
+              />
+              <input
+                type="password" required placeholder="Password (min 6 characters)" minLength={6}
+                value={newAgentPassword} onChange={e => setNewAgentPassword(e.target.value)}
+                className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg"
+              />
+              <button
+                type="submit" disabled={isAddingAgent}
+                className="w-full text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 py-2 rounded-lg"
+              >
+                {isAddingAgent ? 'Adding...' : 'Create Agent'}
+              </button>
+            </form>
+          )}
+
           <div className="space-y-2">
             {agents.map(ag => (
               <div key={ag.id} className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs flex justify-between items-center">
@@ -279,9 +371,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <p className="text-[10px] text-slate-500">{ag.email}</p>
                   </div>
                 </div>
-                <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded uppercase">
-                  {ag.role}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded uppercase">
+                    {ag.role}
+                  </span>
+                  {ag.role !== 'admin' && (
+                    <button
+                      onClick={() => handleRemoveAgent(ag.id)}
+                      className="text-slate-400 hover:text-red-600"
+                      title="Remove agent"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
