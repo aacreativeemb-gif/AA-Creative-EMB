@@ -11,6 +11,7 @@ import { KnowledgeBaseView } from './components/KnowledgeBaseView';
 import { AnalyticsView } from './components/AnalyticsView';
 import { SettingsView } from './components/SettingsView';
 import { WidgetEmbedModal } from './components/WidgetEmbedModal';
+import { AdminAuth } from './components/AdminAuth';
 
 import {
   Property,
@@ -32,10 +33,20 @@ import {
 } from './types';
 
 export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return !!localStorage.getItem('aa_admin_token');
+  });
   const [properties, setProperties] = useState<Property[]>([]);
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
   const [users, setUsers] = useState<User[]>([]);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    const saved = localStorage.getItem('aa_admin_user');
+    try {
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
   const [departments, setDepartments] = useState<Department[]>([]);
   const [visitors, setVisitors] = useState<Visitor[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -259,6 +270,17 @@ export default function App() {
     }
   };
 
+  if (!isAuthenticated) {
+    return (
+      <AdminAuth
+        onAuthenticated={(user) => {
+          setCurrentUser(user);
+          setIsAuthenticated(true);
+        }}
+      />
+    );
+  }
+
   if (loading || !selectedProperty || !currentUser || !aiSettings || !analytics) {
     return (
       <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center space-y-3">
@@ -286,6 +308,12 @@ export default function App() {
         onOpenEmbedModal={() => setShowEmbedModal(true)}
         unreadCount={unreadCount}
         openTicketsCount={openTicketsCount}
+        onLogout={() => {
+          localStorage.removeItem('aa_admin_token');
+          localStorage.removeItem('aa_admin_user');
+          setIsAuthenticated(false);
+          setCurrentUser(null);
+        }}
       />
 
       <main className="flex-1">

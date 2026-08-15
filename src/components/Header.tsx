@@ -12,7 +12,8 @@ import {
   Zap,
   ShieldCheck,
   Building2,
-  Sparkles
+  Sparkles,
+  LogOut
 } from 'lucide-react';
 import { Property, User } from '../types';
 
@@ -28,6 +29,7 @@ interface HeaderProps {
   onOpenEmbedModal: () => void;
   unreadCount: number;
   openTicketsCount: number;
+  onLogout?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -41,7 +43,8 @@ export const Header: React.FC<HeaderProps> = ({
   setActiveTab,
   onOpenEmbedModal,
   unreadCount,
-  openTicketsCount
+  openTicketsCount,
+  onLogout
 }) => {
   const navItems = [
     { id: 'widget_testbench', label: 'Visitor Widget Preview', icon: MessageSquare, badge: null },
@@ -129,6 +132,17 @@ export const Header: React.FC<HeaderProps> = ({
               title={`Agent status: ${currentUser.status}`}
             />
           </div>
+
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              title="Sign Out Admin Portal"
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-rose-900/60 border border-slate-700 hover:border-rose-700/60 rounded-md transition-colors"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Sign Out</span>
+            </button>
+          )}
         </div>
       </div>
 
