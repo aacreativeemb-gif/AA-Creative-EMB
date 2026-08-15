@@ -64,29 +64,41 @@ export const EmailConfigForm: React.FC = () => {
   const handleTestEmail = async () => {
     setIsTesting(true);
     setStatusMessage(null);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12000);
     try {
       const res = await fetch('/api/email/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: smtpUser })
+        body: JSON.stringify({ email: smtpUser }),
+        signal: controller.signal
       });
+      clearTimeout(timer);
       const data = await res.json();
       if (data.success) {
         setStatusMessage({
           type: 'success',
-          text: `🎉 Verified! Test email successfully delivered to ${smtpUser}. Check your Gmail inbox!`
+          text: `🎉 Verified! Test email successfully delivered to ${smtpUser} (${data.method}). Check your Gmail inbox & spam!`
         });
       } else {
         setStatusMessage({
           type: 'error',
-          text: `❌ Email sending failed: ${data.error || 'Please enter your 16-character Google App Password below and click Save.'}`
+          text: `❌ Email sending failed: ${data.error || 'Please enter your 16-character Google App Password and click Save Password.'}`
         });
       }
-    } catch {
-      setStatusMessage({
-        type: 'error',
-        text: '❌ Could not connect to mail server. Please verify your Google App Password.'
-      });
+    } catch (err: any) {
+      clearTimeout(timer);
+      if (err.name === 'AbortError') {
+        setStatusMessage({
+          type: 'error',
+          text: '❌ Connection timed out after 12s. Cloud host took too long to connect to Gmail SMTP. Please check if your 16-digit Google App Password is correct or try again.'
+        });
+      } else {
+        setStatusMessage({
+          type: 'error',
+          text: '❌ Could not connect to mail server. Please verify your Google App Password.'
+        });
+      }
     } finally {
       setIsTesting(false);
     }

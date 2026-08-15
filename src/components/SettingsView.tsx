@@ -67,17 +67,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const handleSendTestEmail = async () => {
     setIsTesting(true);
     setStatusMessage(null);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12000);
     try {
       const res = await fetch('/api/email/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: smtpUser })
+        body: JSON.stringify({ email: smtpUser }),
+        signal: controller.signal
       });
+      clearTimeout(timer);
       const data = await res.json();
       if (data.success) {
         setStatusMessage({
           type: 'success',
-          text: `✅ Test email successfully dispatched to ${smtpUser}! Check your inbox/spam folder.`
+          text: `🎉 Test email successfully dispatched to ${smtpUser} via ${data.method}! Check your Gmail inbox/spam.`
         });
       } else {
         setStatusMessage({
@@ -85,11 +89,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           text: `❌ Email sending failed: ${data.error || 'Please enter your 16-character Google App Password below.'}`
         });
       }
-    } catch {
-      setStatusMessage({
-        type: 'error',
-        text: '❌ Could not connect to mail server. Please verify your Google App Password.'
-      });
+    } catch (err: any) {
+      clearTimeout(timer);
+      if (err.name === 'AbortError') {
+        setStatusMessage({
+          type: 'error',
+          text: '❌ Connection timed out after 12s. Please check if your 16-digit Google App Password is correct or try again.'
+        });
+      } else {
+        setStatusMessage({
+          type: 'error',
+          text: '❌ Could not connect to mail server. Please verify your Google App Password.'
+        });
+      }
     } finally {
       setIsTesting(false);
     }
