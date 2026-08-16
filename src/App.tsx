@@ -81,7 +81,12 @@ export default function App() {
     isNew: boolean;
     visitorId?: string;
   } | null>(null);
-  const [isAudioMuted, setIsAudioMuted] = useState(false);
+  const [isAudioMuted, setIsAudioMuted] = useState(soundFx.isAudioMuted);
+  const toggleAudioMute = () => {
+    soundFx.isAudioMuted = !soundFx.isAudioMuted;
+    if (soundFx.isAudioMuted) soundFx.stopRinging();
+    setIsAudioMuted(soundFx.isAudioMuted);
+  };
 
   // Tracks every message ID we've already seen, so we only ring the 10s bell
   // for genuinely NEW visitor messages (not on first load / page refresh).
@@ -142,20 +147,32 @@ export default function App() {
 
       const newMessagesMap: Record<string, Message[]> = data.messages || {};
 
-      // Ring the 10-second alert bell when a NEW visitor message comes in
-      // and this admin's own status is currently "online" — gives the human
-      // agent time to notice and get ready to reply before the AI/anyone else does.
+      // Sound alert for new visitor messages:
+      // - The visitor's VERY FIRST message in a conversation rings the 10s
+      //   bell, but only while this admin's own status is "online" (gives
+      //   the human agent time to notice and get ready to reply).
+      // - Every message AFTER that just plays a single 1-second ding, so the
+      //   agent knows a reply/follow-up came in without the long alert.
       if (hasLoadedMessagesOnceRef.current) {
-        let hasNewVisitorMessage = false;
+        let hasNewFirstMessage = false;
+        let hasNewFollowupMessage = false;
         Object.values(newMessagesMap).forEach(msgList => {
+          const visitorMsgsInConv = (msgList || []).filter(m => m.senderType === 'visitor');
           (msgList || []).forEach(m => {
-            if (!knownMessageIdsRef.current.has(m.id)) {
-              if (m.senderType === 'visitor') hasNewVisitorMessage = true;
+            if (m.senderType !== 'visitor') return;
+            if (knownMessageIdsRef.current.has(m.id)) return;
+            const isFirstInConv = visitorMsgsInConv.length > 0 && visitorMsgsInConv[0].id === m.id;
+            if (isFirstInConv) {
+              hasNewFirstMessage = true;
+            } else {
+              hasNewFollowupMessage = true;
             }
           });
         });
-        if (hasNewVisitorMessage && currentUserRef.current?.status === 'online') {
+        if (hasNewFirstMessage && currentUserRef.current?.status === 'online') {
           soundFx.ringBell('message', 10);
+        } else if (hasNewFollowupMessage) {
+          soundFx.playDing('message');
         }
       }
       Object.values(newMessagesMap).forEach(msgList => {
@@ -425,6 +442,8 @@ export default function App() {
         activeTab={activeTab}
         setActiveTab={tab => setActiveTab(tab)}
         onOpenEmbedModal={() => setShowEmbedModal(true)}
+        isAudioMuted={isAudioMuted}
+        onToggleAudioMute={toggleAudioMute}
         unreadCount={unreadCount}
         openTicketsCount={openTicketsCount}
         onLogout={() => {
