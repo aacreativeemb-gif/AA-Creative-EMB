@@ -479,33 +479,35 @@ Every digitizing order includes a visual PDF stitch-out proof sheet detailing th
     description: 'AA Creative Embroidery UK Ltd (https://aacreativeemb.com/) is a leading UK-based professional embroidery digitizing and vector conversion company located in London, United Kingdom. Catering to apparel decorators, embroiderers, workwear suppliers, patch manufacturers, and businesses across the UK and worldwide, we specialize in converting artwork and sketches into production-ready stitch files (DST, PES, EMB, EXP, CND) and high-resolution vector artwork.',
     productsAndServices: `SERVICES & PRODUCTS OFFERED BY AA CREATIVE EMBROIDERY UK (https://aacreativeemb.com/):
 
-1. Custom Logo Digitizing (£4 - £8 / $5 - $10):
+1. Custom Logo Digitizing:
    - Left chest, sleeve, pocket, and cap logo digitizing for UK workwear, uniforms, and apparel.
    - Clean pathing, minimal trims, optimized density for zero thread breakage.
 
-2. Cap & Hat Embroidery Digitizing (£4 - £7 / $5 - $8):
+2. Cap & Hat Embroidery Digitizing:
    - Curved front panel, side, and back strap digitizing.
    - Specially path-sequenced from center-out to prevent seam puckering.
 
-3. 3D Puff Embroidery Digitizing (£6 - £10 / $8 - $12):
+3. 3D Puff Embroidery Digitizing:
    - 3D foam elevation digitizing for caps, hoodies, and jackets.
    - Sharp capped satin edges for clean foam tear-away.
 
-4. Large Jacket Back Digitizing (£12 - £28 / $15 - $35):
+4. Large Jacket Back Digitizing:
    - Intricate jacket back logos, motorcycle club patches, and large emblem designs.
    - Density-balanced underlays to avoid garment distortion.
 
-5. Patch Digitizing & Production (£8 - £20 / $10 - $25):
+5. Patch Digitizing & Production:
    - Embroidered Patches, Woven Patches, Chenille Patches, PVC Patches, Leather Patches.
    - Backings: Iron-on (Heat Seal), Velcro (Hook & Loop), Sew-on, Adhesive.
 
-6. Vector Art Conversion (£4 - £8 / $5 - $10):
+6. Vector Art Conversion:
    - Converting low-res JPG, PNG, PDF to 100% scalable Vector AI, EPS, SVG, CDR files.
 
 FILES DELIVERED WITH EVERY ORDER:
 • Embroidery: DST, PES, EMB (Wilcom source), EXP, CND, HUS, JEF, VP3, XXX.
 • Vector: AI, EPS, SVG, CDR, High-Res PDF.
-• Free PDF Stitch-Out Approval Proof Sheet & Color Sequence Chart!`,
+• Free PDF Stitch-Out Approval Proof Sheet & Color Sequence Chart!
+
+NOTE: For exact prices, always use the PRICING block below — do not quote prices from this description.`,
     pricingInfo: `PRICING & FREE QUOTES AT AA CREATIVE EMBROIDERY (currency shown automatically matches the customer's country — GBP for UK, USD standard for USA & everywhere else):
 
 USD PRICING (USA & all other countries):
@@ -526,7 +528,7 @@ GBP PRICING (United Kingdom):
 Bulk Discount Packages (GBP) — portal.aacreativeemb.com/login:
   - Basic: £100 / 40 orders
   - Standard: £240 / 80 orders
-  - Premium: £300 / 170 orders
+  - Premium: £300 / 70 orders
 
 • Revisions & Edits: 100% FREE minor edits, thread color changes, and size adjustments!
 • Instant Free Quotes: Send artwork via chat or email (aacreativeemb@gmail.com) or WhatsApp (+44 7462 23 8732).

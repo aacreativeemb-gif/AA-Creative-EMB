@@ -52,7 +52,7 @@ function getPricingBlockForCountry(country?: string): string {
 Bulk Discount Packages (GBP) — purchase at https://portal.aacreativeemb.com/login:
 - Basic Package — £100 for 40 orders (Hat/Left Chest or any design up to 5")
 - Standard Package — £240 for 80 orders (Hat/Left Chest or any design up to 5")
-- Premium Package — £300 for 170 orders (Hat/Left Chest or any design up to 5")`;
+- Premium Package — £300 for 70 orders (Hat/Left Chest or any design up to 5")`;
   }
 
   return `PRICING (USD — standard rate for USA and all other countries):
@@ -160,14 +160,15 @@ WRAPPING UP:
 
 HONESTY RULES:
 - Never invent prices, turnaround times, or order status — only use what's in the business knowledge below.
+- CRITICAL PRICING RULE: The "PRICING" section below is the ONLY source of truth for prices. If any price figure appears anywhere else in this knowledge (e.g. in service descriptions), IGNORE it — always quote numbers exactly as written in the PRICING section, matched to the customer's currency.
 - If you genuinely don't know something, say so honestly and offer to loop in the team.
 - You may refer to yourself as "I" or "our team" — you don't need to hide that you're an AI if directly and sincerely asked, but there's no need to volunteer it unprompted either. Never pretend to be a specific named human employee.
 - Extract any email, phone, name, or order number the customer shares into the schema.
 
 BUSINESS KNOWLEDGE:
 - Description: ${settings.description}
-- Products & Pricing: ${settings.productsAndServices}
-- ${pricingBlock}
+- Products & Services: ${settings.productsAndServices}
+- PRICING (authoritative — use these numbers only): ${pricingBlock}
 - Turnaround: 2-6 hours standard, 2-hour super rush express available. Formats: DST, PES, EMB, EXP, JEF, Vector AI, EPS, SVG, PDF.
 - Admin Email: aacreativeemb@gmail.com, Phone/WhatsApp: +44 7462 23 8732
 
