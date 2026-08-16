@@ -72,8 +72,23 @@ export default function App() {
   // Sound Notification & Real-time Live Visitor Alert State
   const prevVisitorCountRef = useRef<number | null>(null);
   const knownVisitorIdsRef = useRef<Set<string>>(new Set());
-  const [liveToast, setLiveToast] = useState<{ title: string; subtitle: string; time: string; visitorId?: string } | null>(null);
+  const [liveToast, setLiveToast] = useState<{
+    title: string;
+    subtitle: string;
+    time: string;
+    date: string;
+    ip: string;
+    isNew: boolean;
+    visitorId?: string;
+  } | null>(null);
   const [isAudioMuted, setIsAudioMuted] = useState(false);
+
+  // Tracks every message ID we've already seen, so we only ring the 10s bell
+  // for genuinely NEW visitor messages (not on first load / page refresh).
+  const knownMessageIdsRef = useRef<Set<string>>(new Set());
+  const hasLoadedMessagesOnceRef = useRef(false);
+  const currentUserRef = useRef<User | null>(null);
+  currentUserRef.current = currentUser;
 
   // Fetch full state from backend Express server
   const fetchState = async () => {
@@ -101,12 +116,18 @@ export default function App() {
         if (brandNewVisitor) {
           // Play 1-Second Ding Tone
           soundFx.playDing('visitor');
-          
-          // Show interactive live toast
+
+          const arrivalDate = new Date(brandNewVisitor.sessionStartedAt || brandNewVisitor.firstSeenAt || Date.now());
+          const isNewCustomer = (brandNewVisitor.visitsCount || 1) <= 1;
+
+          // Show interactive live toast with exact date/time, IP & New/Existing badge
           setLiveToast({
             title: `🔔 New Visitor Arrived on Website!`,
             subtitle: `${brandNewVisitor.name} (${brandNewVisitor.location.flag} ${brandNewVisitor.location.city}, ${brandNewVisitor.location.country}) is browsing ${brandNewVisitor.currentUrl}`,
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            time: arrivalDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            date: arrivalDate.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }),
+            ip: brandNewVisitor.ip,
+            isNew: isNewCustomer,
             visitorId: brandNewVisitor.id
           });
         }
@@ -118,7 +139,31 @@ export default function App() {
 
       setVisitors(newVisitorsList);
       setConversations(data.conversations || []);
-      setMessages(data.messages || {});
+
+      const newMessagesMap: Record<string, Message[]> = data.messages || {};
+
+      // Ring the 10-second alert bell when a NEW visitor message comes in
+      // and this admin's own status is currently "online" — gives the human
+      // agent time to notice and get ready to reply before the AI/anyone else does.
+      if (hasLoadedMessagesOnceRef.current) {
+        let hasNewVisitorMessage = false;
+        Object.values(newMessagesMap).forEach(msgList => {
+          (msgList || []).forEach(m => {
+            if (!knownMessageIdsRef.current.has(m.id)) {
+              if (m.senderType === 'visitor') hasNewVisitorMessage = true;
+            }
+          });
+        });
+        if (hasNewVisitorMessage && currentUserRef.current?.status === 'online') {
+          soundFx.ringBell('message', 10);
+        }
+      }
+      Object.values(newMessagesMap).forEach(msgList => {
+        (msgList || []).forEach(m => knownMessageIdsRef.current.add(m.id));
+      });
+      hasLoadedMessagesOnceRef.current = true;
+
+      setMessages(newMessagesMap);
       setTickets(data.tickets || []);
       setKbCategories(data.kbCategories || []);
       setKbArticles(data.kbArticles || []);
@@ -161,6 +206,12 @@ export default function App() {
       });
       const data = await res.json();
       if (data.success) {
+        // Server started a brand-new clean chat thread (visitor's previous
+        // session was closed/stale) — follow it so the testbench UI keeps
+        // showing the active conversation instead of a dead one.
+        if (data.newConversationId) {
+          setActiveConversationId(data.newConversationId);
+        }
         fetchState();
       }
     } catch (e) {
@@ -524,11 +575,21 @@ export default function App() {
                 <p className="font-bold text-sm text-blue-300 flex items-center gap-1.5">
                   <span>{liveToast.title}</span>
                 </p>
-                <span className="text-[10px] text-slate-400 font-mono">{liveToast.time}</span>
+                <span
+                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                    liveToast.isNew ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                  }`}
+                >
+                  {liveToast.isNew ? 'NEW' : 'EXISTING'}
+                </span>
               </div>
               <p className="text-xs text-slate-200 mt-1 line-clamp-2 leading-relaxed">
                 {liveToast.subtitle}
               </p>
+              <div className="flex items-center gap-3 mt-1.5 text-[10px] text-slate-400 font-mono">
+                <span>{liveToast.date} · {liveToast.time}</span>
+                <span>IP: {liveToast.ip}</span>
+              </div>
 
               <div className="flex items-center gap-2 mt-3 pt-2 border-t border-slate-800">
                 <button
