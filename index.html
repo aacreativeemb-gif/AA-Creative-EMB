@@ -12,6 +12,83 @@
   </head>
   <body>
     <div id="root"></div>
+
+    <!--
+      DIAGNOSTIC / SILENT-ERROR CATCHER
+      ----------------------------------
+      If the app fails to load (blank/stuck screen), it's almost always a
+      JavaScript error that only shows up in the browser Console — the user
+      never sees it. This script catches ANY such error and shows it
+      directly on the page in a red box, plus a "still stuck" warning if
+      the app hasn't mounted after 8 seconds. Safe to leave in permanently;
+      it does nothing once the real app has mounted successfully.
+    -->
+    <script>
+      (function () {
+        var box = null;
+
+        function ensureBox() {
+          if (box) return box;
+          box = document.createElement('div');
+          box.id = '__aa_diag_box';
+          box.style.cssText =
+            'position:fixed;top:0;left:0;right:0;z-index:999999;' +
+            'background:#3f0d0d;color:#ffdede;font-family:monospace;' +
+            'font-size:13px;line-height:1.5;padding:14px 16px;' +
+            'max-height:60vh;overflow:auto;border-bottom:3px solid #ff4d4d;' +
+            'white-space:pre-wrap;word-break:break-word;';
+          var title = document.createElement('div');
+          title.textContent = '⚠️ App failed to load — error detected (this box is only visible for debugging):';
+          title.style.cssText = 'font-weight:bold;margin-bottom:8px;color:#ff8a8a;';
+          box.appendChild(title);
+          document.body.appendChild(box);
+          return box;
+        }
+
+        function logError(label, detail) {
+          var el = ensureBox();
+          var line = document.createElement('div');
+          line.style.cssText = 'margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid #5a1a1a;';
+          line.textContent = '[' + new Date().toLocaleTimeString() + '] ' + label + ': ' + detail;
+          el.appendChild(line);
+        }
+
+        window.addEventListener('error', function (event) {
+          var detail = event.message || 'Unknown error';
+          if (event.filename) {
+            detail += '\n  at ' + event.filename + ':' + event.lineno + ':' + event.colno;
+          }
+          if (event.error && event.error.stack) {
+            detail += '\n' + event.error.stack;
+          }
+          logError('JavaScript Error', detail);
+        });
+
+        window.addEventListener('unhandledrejection', function (event) {
+          var reason = event.reason;
+          var detail = (reason && (reason.stack || reason.message)) || String(reason);
+          logError('Unhandled Promise Rejection', detail);
+        });
+
+        // If the React app hasn't replaced #root's empty content within
+        // 8 seconds, something is silently stuck (network stall, infinite
+        // loop, failed module load, etc.) — flag it even if no JS error
+        // technically fired.
+        setTimeout(function () {
+          var root = document.getElementById('root');
+          if (root && root.children.length === 0) {
+            logError(
+              'Stuck Loading',
+              'The app has not rendered anything after 8 seconds. ' +
+              'This usually means a network request to the server is hanging, ' +
+              'or a JS file (e.g. /src/main.tsx) failed to load. ' +
+              'Check the Network tab for a request stuck in "Pending".'
+            );
+          }
+        }, 8000);
+      })();
+    </script>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
