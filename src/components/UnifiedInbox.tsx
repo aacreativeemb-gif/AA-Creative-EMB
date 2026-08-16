@@ -52,7 +52,7 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({
   onChangeStatus,
   onAssignAgent
 }) => {
-  const [filterChannel, setFilterChannel] = useState<'all' | 'website' | 'gmail' | 'whatsapp' | 'ticket'>('all');
+  const [filterChannel, setFilterChannel] = useState<'live' | 'all' | 'website' | 'gmail' | 'whatsapp' | 'ticket'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [inputText, setInputText] = useState('');
   const [showCannedMenu, setShowCannedMenu] = useState(false);
@@ -95,7 +95,12 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({
   };
 
   const filteredConversations = conversations.filter(c => {
-    if (filterChannel !== 'all' && c.channel !== filterChannel) return false;
+    if (filterChannel === 'live') {
+      const vis = visitors.find(v => v.id === c.visitorId);
+      if (!vis || vis.status !== 'online') return false;
+    } else if (filterChannel !== 'all' && c.channel !== filterChannel) {
+      return false;
+    }
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       return (
@@ -152,6 +157,22 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({
           </div>
 
           <div className="flex items-center gap-1 overflow-x-auto scrollbar-none text-xs">
+            <button
+              onClick={() => setFilterChannel('live')}
+              className={`px-2.5 py-1 rounded-md font-medium text-[11px] transition whitespace-nowrap flex items-center gap-1 ${
+                filterChannel === 'live'
+                  ? 'bg-emerald-600 text-white shadow-2xs'
+                  : 'bg-white text-emerald-700 border border-emerald-200 hover:bg-emerald-50'
+              }`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${filterChannel === 'live' ? 'bg-white' : 'bg-emerald-500'} ${visitors.some(v => v.status === 'online') ? 'animate-pulse' : ''}`} />
+              Live Customer
+              {visitors.filter(v => v.status === 'online').length > 0 && (
+                <span className={`text-[9px] font-bold px-1.5 rounded-full ${filterChannel === 'live' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-700'}`}>
+                  {visitors.filter(v => v.status === 'online').length}
+                </span>
+              )}
+            </button>
             {(['all', 'website', 'gmail', 'whatsapp', 'ticket'] as const).map(ch => (
               <button
                 key={ch}
