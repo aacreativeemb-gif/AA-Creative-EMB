@@ -44,7 +44,7 @@ fun HomeScreen(
                 containerColor = Navy800,
                 contentColor = White
             ) {
-                BottomTab.values().forEach { tab ->
+                BottomTab.entries.forEach { tab ->
                     val isSelected = selectedTab == tab
                     NavigationBarItem(
                         selected = isSelected,
@@ -83,7 +83,7 @@ fun HomeScreen(
                         colors = NavigationBarItemDefaults.colors(
                             indicatorColor = Navy700
                         )
-                    }
+                    )
                 }
             }
         },

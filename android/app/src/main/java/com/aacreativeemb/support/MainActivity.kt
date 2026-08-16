@@ -13,9 +13,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.DefaultLifecycleObserver
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.navigation.compose.rememberNavController
 import com.aacreativeemb.support.ui.navigation.AppNavHost
 import com.aacreativeemb.support.ui.navigation.NavRoutes
@@ -38,7 +35,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         askNotificationPermission()
-        setupLifecycleObserver()
 
         val deepLinkedConvId = intent?.getStringExtra("EXTRA_CONVERSATION_ID")
 
@@ -71,6 +67,22 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        if (authViewModel.isAuthenticated) {
+            mainViewModel.setAgentStatus("online")
+            mainViewModel.startStatePolling()
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (authViewModel.isAuthenticated) {
+            mainViewModel.setAgentStatus("away")
+            mainViewModel.stopStatePolling()
+        }
+    }
+
     private fun askNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(
@@ -81,25 +93,5 @@ class MainActivity : ComponentActivity() {
                 requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
         }
-    }
-
-    private fun setupLifecycleObserver() {
-        ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
-            override fun onStart(owner: LifecycleOwner) {
-                // App entered foreground
-                if (authViewModel.isAuthenticated) {
-                    mainViewModel.setAgentStatus("online")
-                    mainViewModel.startStatePolling()
-                }
-            }
-
-            override fun onStop(owner: LifecycleOwner) {
-                // App entered background
-                if (authViewModel.isAuthenticated) {
-                    mainViewModel.setAgentStatus("away")
-                    mainViewModel.stopStatePolling()
-                }
-            }
-        })
     }
 }
