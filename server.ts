@@ -1093,6 +1093,7 @@ async function startServer() {
       if (polishedResult.polishedEnglish) {
         finalEnglishText = polishedResult.polishedEnglish;
         isPolished = polishedResult.isConverted;
+        console.log(`[Agent Message Translation] Original Roman Urdu/Draft: "${text}" -> Clean English sent to Visitor: "${finalEnglishText}" (Converted: ${isPolished})`);
       }
     }
 
