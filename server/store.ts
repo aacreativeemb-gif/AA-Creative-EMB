@@ -506,12 +506,30 @@ FILES DELIVERED WITH EVERY ORDER:
 • Embroidery: DST, PES, EMB (Wilcom source), EXP, CND, HUS, JEF, VP3, XXX.
 • Vector: AI, EPS, SVG, CDR, High-Res PDF.
 • Free PDF Stitch-Out Approval Proof Sheet & Color Sequence Chart!`,
-    pricingInfo: `PRICING & FREE QUOTES AT AA CREATIVE EMBROIDERY:
-• Small Logos & Cap Digitizing: £4 - £8 ($5 - $10)
-• Large Jacket Back Designs: £12 - £28 ($15 - $35) based on stitch count & complexity
-• Vector Art Conversion: £4 - £8 ($5 - $10)
+    pricingInfo: `PRICING & FREE QUOTES AT AA CREATIVE EMBROIDERY (currency shown automatically matches the customer's country — GBP for UK, USD standard for USA & everywhere else):
+
+USD PRICING (USA & all other countries):
+• Left Chest / Hat / Cap (up to 5"): $5.00
+• Jacket Back / Complex Design: $8 to $20
+• Vector Art Conversion: $5.00
+• Complex Vector Art: $8 to $20
+Bulk Discount Packages (USD) — portal.aacreativeemb.com/login:
+  - Basic: $150 / 40 orders
+  - Standard: $240 / 80 orders
+  - Premium: $360 / 70 orders
+
+GBP PRICING (United Kingdom):
+• Left Chest / Hat / Cap (up to 5"): £3.00
+• Jacket Back / Complex Design: £5 to £15.00
+• Vector Art Conversion: £3.00
+• Complex Vector Art: £5 to £15.00
+Bulk Discount Packages (GBP) — portal.aacreativeemb.com/login:
+  - Basic: £100 / 40 orders
+  - Standard: £240 / 80 orders
+  - Premium: £300 / 170 orders
+
 • Revisions & Edits: 100% FREE minor edits, thread color changes, and size adjustments!
-• Instant Free Quotes: Send artwork via chat or email (admin@aacreativeemb.com) or WhatsApp (+44 7462 23 8732) for a 15-minute quote.
+• Instant Free Quotes: Send artwork via chat or email (aacreativeemb@gmail.com) or WhatsApp (+44 7462 23 8732).
 • Payments Accepted: Credit/Debit Card, PayPal, UK Bank Transfer (BACS), Invoice Billing.`,
     faqsText: `Q: What is the turnaround time for digitizing?
 A: Standard turnaround is 6 to 12 hours. Super-fast express rush service is available in 2 to 4 hours!

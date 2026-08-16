@@ -24,6 +24,8 @@ export interface AiProcessResult {
   isHumanRequested: boolean;
   aiSummary?: AiSummary;
   ticketSubject?: string;
+  /** True if this was the visitor's very first-ever message in the conversation (a greeting reply, not an answer) — used so we don't prematurely arm the "anything else?" auto-close flow on the opening hello. */
+  isFirstEverMessage?: boolean;
   extractedDetails?: {
     orderNumber?: string;
     projectType?: 'digitizing' | 'vector' | 'other';
@@ -33,12 +35,69 @@ export interface AiProcessResult {
   };
 }
 
+// Returns the correct currency pricing block based on the visitor's detected
+// country: GBP for United Kingdom customers, USD (standard) for USA and every
+// other country. This gets injected directly into the AI's knowledge so it
+// never quotes the wrong currency.
+function getPricingBlockForCountry(country?: string): string {
+  const isUK = !!country && /united kingdom|^uk$|england|scotland|wales|northern ireland|britain/i.test(country);
+
+  if (isUK) {
+    return `PRICING (GBP — this customer is in the United Kingdom):
+- Left Chest / Hat / Cap (up to 5") — £3.00
+- Jacket Back / Complex Design — £5 to £15.00
+- Vector Art Conversion — £3.00
+- Complex Vector Art — £5 to £15.00
+
+Bulk Discount Packages (GBP) — purchase at https://portal.aacreativeemb.com/login:
+- Basic Package — £100 for 40 orders (Hat/Left Chest or any design up to 5")
+- Standard Package — £240 for 80 orders (Hat/Left Chest or any design up to 5")
+- Premium Package — £300 for 170 orders (Hat/Left Chest or any design up to 5")`;
+  }
+
+  return `PRICING (USD — standard rate for USA and all other countries):
+- Left Chest / Hat / Cap (up to 5") — $5.00
+- Jacket Back / Complex Design — $8 to $20
+- Vector Art Conversion — $5.00
+- Complex Vector Art — $8 to $20
+
+Bulk Discount Packages (USD) — purchase at https://portal.aacreativeemb.com/login:
+- Basic Package — $150 for 40 orders (Hat/Left Chest or any design up to 5")
+- Standard Package — $240 for 80 orders (Hat/Left Chest or any design up to 5")
+- Premium Package — $360 for 70 orders (Hat/Left Chest or any design up to 5")`;
+}
+
+// A reply "answered something" (pricing, turnaround, formats, a ticket
+// number, etc.) if it contains concrete specifics like this — as opposed to
+// a bare greeting or "which project can we help with?" qualifying message.
+function looksLikeSubstantiveAnswer(text: string): boolean {
+  return /[£$]\s?\d|\bDST\b|\bPES\b|\bEMB\b|\bEXP\b|\bJEF\b|turnaround|\d\s*(-|to)\s*\d?\s*hour|\bformat/i.test(text);
+}
+
+// Guarantees every non-escalated reply that actually answers something ends
+// with a genuine "anything else?" question. The visitor's NEXT message is
+// only ever treated as "chat is done, close it" if they were truly just
+// asked this — so this function is what makes that downstream check
+// safe/accurate instead of closing the chat the moment someone happens to
+// say "thanks" right after a plain greeting.
+function ensureClosingQuestion(responseText: string, isFirstEverMessage: boolean, shouldEscalate: boolean): string {
+  if (shouldEscalate || !responseText) return responseText;
+  // A first-ever message that's just a greeting/qualifying reply (no real
+  // answer given yet) shouldn't be forced to ask "anything else?" — that
+  // question only makes sense once something has actually been answered.
+  if (isFirstEverMessage && !looksLikeSubstantiveAnswer(responseText)) return responseText;
+  const alreadyAsks = /anything\s*else|kuch\s*(aur|or)|aur\s*kuch|kisi\s*aur\s*(cheez|chiz)|need\s*anything\s*more|help\s*you\s*with\s*(anything|something)\s*else/i.test(responseText);
+  if (alreadyAsks) return responseText;
+  return responseText.trim() + '\n\nIs there anything else I can help you with today?';
+}
+
 export async function processCustomerMessageWithAI(
   conversationId: string,
   userMessageText: string,
   previousMessages: Message[],
   visitorName?: string,
-  visitorEmail?: string
+  visitorEmail?: string,
+  visitorCountry?: string
 ): Promise<AiProcessResult> {
   const settings = globalStore.aiSettings;
   const lowerText = userMessageText.toLowerCase().trim();
@@ -65,6 +124,11 @@ export async function processCustomerMessageWithAI(
 
   // Check how many messages exchanged
   const visitorMessagesCount = previousMessages.filter(m => m.senderType === 'visitor').length;
+  // previousMessages already includes the current visitor message (it's
+  // pushed to the store before this function is called), so a count of
+  // exactly 1 means this is the very first thing the visitor has ever sent.
+  const isFirstEverMessage = visitorMessagesCount <= 1;
+  const pricingBlock = getPricingBlockForCountry(visitorCountry);
 
   // 2. Call Gemini model gemini-2.5-flash for intelligent conversational support & lead qualification
   if (process.env.GEMINI_API_KEY) {
@@ -91,7 +155,8 @@ HANDLING ORDER STATUS / COMPLAINTS / HUMAN REQUESTS:
   - If you do have it, just confirm they'll get a confirmation there
 
 WRAPPING UP:
-- Once you've actually answered what the customer needed and there's nothing pending (no ticket, no missing info), naturally close with something like "Is there anything else I can help you with today?" — don't force this after every message, only when the topic genuinely feels resolved.
+- Whenever you've actually answered what the customer needed and there's nothing pending (no ticket, no missing info you're waiting on), you MUST end your reply with a natural closing question such as "Is there anything else I can help you with today?" — every single answer-giving reply needs this, no exceptions, EXCEPT your very first greeting to a brand-new visitor (that first message is about finding out what they need, not wrapping up).
+- If the customer then says "no" / "thanks" / "that's all" etc., that's your cue the conversation is over — a system process handles the goodbye and rating prompt automatically, so you don't need to say goodbye yourself.
 
 HONESTY RULES:
 - Never invent prices, turnaround times, or order status — only use what's in the business knowledge below.
@@ -102,7 +167,7 @@ HONESTY RULES:
 BUSINESS KNOWLEDGE:
 - Description: ${settings.description}
 - Products & Pricing: ${settings.productsAndServices}
-- Pricing: Cap & Left chest digitizing from £4 / $5 (2-6 hour express). Vector art from £5 / $7.
+- ${pricingBlock}
 - Turnaround: 2-6 hours standard, 2-hour super rush express available. Formats: DST, PES, EMB, EXP, JEF, Vector AI, EPS, SVG, PDF.
 - Admin Email: aacreativeemb@gmail.com, Phone/WhatsApp: +44 7462 23 8732
 
@@ -204,7 +269,11 @@ Respond STRICTLY in JSON format matching the schema provided.`;
       }
 
       return {
-        aiResponseText: parsed.responseText || "Thank you for reaching out to AA Creative Embroidery! How can we assist you with your digitizing or vector artwork today?",
+        aiResponseText: ensureClosingQuestion(
+          parsed.responseText || "Thank you for reaching out to AA Creative Embroidery! How can we assist you with your digitizing or vector artwork today?",
+          isFirstEverMessage,
+          shouldEscalate
+        ),
         confidenceScore,
         shouldEscalate,
         requiresTicket,
@@ -212,6 +281,7 @@ Respond STRICTLY in JSON format matching the schema provided.`;
         escalationReason: parsed.escalationReason,
         languageDetected: 'English',
         isHumanRequested: false,
+        isFirstEverMessage,
         aiSummary: summary,
         extractedDetails: {
           orderNumber: finalOrderNum,
@@ -227,7 +297,10 @@ Respond STRICTLY in JSON format matching the schema provided.`;
   }
 
   // Fallback Rule-Based Engine
-  return getFallbackAiResponse(userMessageText, previousMessages, visitorName, visitorEmail);
+  const fallbackResult = getFallbackAiResponse(userMessageText, previousMessages, visitorName, visitorEmail, visitorCountry);
+  fallbackResult.aiResponseText = ensureClosingQuestion(fallbackResult.aiResponseText, isFirstEverMessage, fallbackResult.shouldEscalate);
+  fallbackResult.isFirstEverMessage = isFirstEverMessage;
+  return fallbackResult;
 }
 
 export async function generateAiConversationSummary(
@@ -296,7 +369,8 @@ function getFallbackAiResponse(
   userMessageText: string,
   previousMessages: Message[],
   visitorName?: string,
-  visitorEmail?: string
+  visitorEmail?: string,
+  visitorCountry?: string
 ): AiProcessResult {
   const lower = userMessageText.toLowerCase().trim();
   const onlineAgents = globalStore.users.filter(u => u.status === 'online');
@@ -370,7 +444,7 @@ function getFallbackAiResponse(
   if (lower.includes('quote') || lower.includes('price') || lower.includes('cost') || lower.includes('rate') || lower.includes('how much') || lower.includes('digitiz') || lower.includes('vector')) {
     const askContact = isGuestEmail ? "\n\nMay I also know your name and email address so we can save your project specifications and send you your official quote sheet?" : "";
     return {
-      aiResponseText: `Our standard embroidery digitizing rates start from £4 / $5 for cap and left chest logos with 2-6 hour express turnaround. Vector art conversions start from £5 / $7 with Tajima DST, PES, EMB, and vector AI/EPS formats included.${askContact}`,
+      aiResponseText: `Here are our current rates:\n\n${getPricingBlockForCountry(visitorCountry)}${askContact}`,
       confidenceScore: 95,
       shouldEscalate: false,
       languageDetected: 'English',
