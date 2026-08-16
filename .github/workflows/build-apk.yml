@@ -40,7 +40,8 @@ jobs:
         ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
       run: |
         cd android
-        gradle assembleDebug -x lint -x test --stacktrace --no-daemon
+        chmod +x gradlew || true
+        gradle assembleDebug -x lint -x test --stacktrace --no-daemon || ./gradlew assembleDebug -x lint -x test --stacktrace --no-daemon
 
     - name: Upload Debug APK Artifact
       uses: actions/upload-artifact@v4
