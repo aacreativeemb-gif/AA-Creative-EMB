@@ -28,16 +28,20 @@ jobs:
         yes | sdkmanager --licenses || true
         sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
 
-    - name: Setup Gradle Wrapper & Build APK
+    - name: Setup Gradle 8.7
+      uses: gradle/actions/setup-gradle@v3
+      with:
+        gradle-version: '8.7'
+
+    - name: Build Debug APK
+      working-directory: android
       env:
         ANDROID_HOME: /usr/local/lib/android/sdk
         ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+        GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m"
       run: |
-        cd android
         echo "sdk.dir=/usr/local/lib/android/sdk" > local.properties
-        gradle wrapper --gradle-version 8.7
-        chmod +x gradlew
-        ./gradlew assembleDebug --no-daemon --stacktrace
+        gradle assembleDebug --no-daemon --stacktrace
 
     - name: Upload Debug APK Artifact
       uses: actions/upload-artifact@v4
