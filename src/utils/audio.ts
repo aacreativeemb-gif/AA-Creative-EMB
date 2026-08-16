@@ -4,6 +4,7 @@
 class SoundController {
   private audioCtx: AudioContext | null = null;
   public isAudioMuted = false;
+  private ringTimer: number | null = null;
 
   private getAudioContext(): AudioContext | null {
     if (typeof window === 'undefined') return null;
@@ -92,6 +93,36 @@ class SoundController {
       osc3.stop(now + duration);
     } catch (err) {
       console.warn('Audio tone playback bypassed:', err);
+    }
+  }
+
+  // Rings the ding repeatedly for N seconds — used when a customer sends a
+  // chat message and the admin dashboard is live, so the agent has time to
+  // notice and get ready before replying.
+  ringBell(type: 'visitor' | 'message' | 'ticket' = 'message', durationSeconds = 10) {
+    if (this.isAudioMuted) return;
+    if (this.ringTimer) {
+      clearInterval(this.ringTimer);
+      this.ringTimer = null;
+    }
+    this.playDing(type);
+    let elapsed = 0;
+    const stepMs = 1100; // a little over 1s so each ding finishes before the next starts
+    this.ringTimer = window.setInterval(() => {
+      elapsed += stepMs;
+      if (elapsed >= durationSeconds * 1000) {
+        if (this.ringTimer) clearInterval(this.ringTimer);
+        this.ringTimer = null;
+        return;
+      }
+      this.playDing(type);
+    }, stepMs);
+  }
+
+  stopRinging() {
+    if (this.ringTimer) {
+      clearInterval(this.ringTimer);
+      this.ringTimer = null;
     }
   }
 }
