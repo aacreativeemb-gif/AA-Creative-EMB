@@ -496,6 +496,138 @@ function getFallbackAiResponse(
   };
 }
 
+// ============================================================================
+// OFFLINE SAFETY-NET TRANSLATOR (Roman Urdu -> English)
+// ----------------------------------------------------------------------------
+// This is used ONLY when Gemini is unreachable/misconfigured (e.g. missing
+// GEMINI_API_KEY on a custom deployment outside AI Studio). It is a best-
+// effort dictionary/phrase translator — not as good as Gemini, but it
+// guarantees a customer NEVER sees raw, un-translated Roman Urdu, which is a
+// hard business requirement (all customers are UK/USA and only read English).
+// ============================================================================
+
+// Common whole support-chat phrases, checked first (best quality when they match).
+// Note: h(ai|ain|e|ein)? below matches all common spellings of "hai"/"hain"/"he"/"hein".
+const ROMAN_URDU_PHRASE_MAP: Array<{ pattern: RegExp; replacement: string }> = [
+  { pattern: /\b(me|main)\s*ap(ki|ka|)\s*kia?\s*madad\s*kar\s*sakta\s*h[uo]n?\b\??/gi, replacement: 'How can I help you?' },
+  { pattern: /\bkia\s*(mein\s*)?ap\s*ki\s*madad\s*kar\s*sakta\s*h[uo]n?\b\??/gi, replacement: 'How can I help you?' },
+  { pattern: /\bassalam\s*o?\s*alaikum\b/gi, replacement: 'Hello' },
+  { pattern: /\bwalaikum\s*(as)?salam\b/gi, replacement: 'Hello' },
+  { pattern: /\bap\s*kaise\s*h(ai|ain|e|ein)?\b\??/gi, replacement: 'How are you?' },
+  { pattern: /\bshukriya\b/gi, replacement: 'thank you' },
+  { pattern: /\bmehrbani\b/gi, replacement: 'thank you' },
+  { pattern: /\btheek\s*h(ai|ain|e|ein)?\b/gi, replacement: 'okay' },
+  { pattern: /\bthek\s*h(ai|ain|e|ein)?\b/gi, replacement: 'okay' },
+  { pattern: /\bkoi\s*masla\s*nahi[n]?\b/gi, replacement: 'no problem' },
+  { pattern: /\bfikar\s*na\s*kar[ei]n\b/gi, replacement: "don't worry" },
+  { pattern: /\bkitn[ei]\s*ghant[ei]\s*lagen\s*g[ei]\b\??/gi, replacement: 'how many hours will it take?' },
+  { pattern: /\bprice\s*kitni\s*h(ai|ain|e|ein)?\b\??/gi, replacement: 'what is the price?' },
+  { pattern: /\brate\s*kia\s*h(ai|ain|e|ein)?\b\??/gi, replacement: 'what is the rate?' },
+  { pattern: /\bquote\s*bhej\s*(doon|deta|denge)\s*g[ae]\b/gi, replacement: 'I will send the quote' },
+  { pattern: /\bthora\s*wait\s*kar[ei]n\b/gi, replacement: 'please wait a moment' },
+  { pattern: /\border\s*confirm\s*h(ai|ain|e|ein)?\b/gi, replacement: 'the order is confirmed' },
+  { pattern: /\bpayment\s*kar\s*d[ei]n\b/gi, replacement: 'please make the payment' },
+  { pattern: /\blink\s*bhej\s*(raha|rahi)\s*h[uo]n\b/gi, replacement: 'I am sending the link' },
+  { pattern: /\bap\s*ka\s*bohat?\s*shukriya\b/gi, replacement: 'thank you very much' },
+  { pattern: /\bkoi\s*aur\s*madad\s*chahiye\b\??/gi, replacement: 'do you need any more help?' },
+  { pattern: /\bji\s*bilkul\b/gi, replacement: 'yes, absolutely' },
+  { pattern: /\bji\s*han\b/gi, replacement: 'yes' },
+  { pattern: /\bji\s*nahi[n]?\b/gi, replacement: 'no' },
+  // Longer/compound patterns
+  { pattern: /\b(\d+)\s*ghant[ey]?\s*(mein|me)?\s*taiyar\s*ho\s*jaye\s*gi\b/gi, replacement: 'will be ready in $1 hours' },
+  { pattern: /\bfile\s*taiyar\s*ho\s*jaye\s*gi\b/gi, replacement: 'the file will be ready' },
+  { pattern: /\bkal\s*tak\s*ready\s*ho\s*jaye\s*g[ai]\b/gi, replacement: 'will be ready by tomorrow' },
+  { pattern: /\bhum\s*check\s*kar\s*rahe\s*h(ai|ain|e|ein)?\b/gi, replacement: 'we are checking' },
+  { pattern: /\b(mein|me)\s*(abhi\s*)?dekh\s*(raha|rahi)\s*h[uo]n\b/gi, replacement: 'I am checking now' },
+  { pattern: /\bap\s*ka\s*design\s*mil\s*gaya\s*h(ai|ain|e|ein)?\b/gi, replacement: 'we have received your design' },
+  { pattern: /\bdesign\s*mil\s*gaya\s*h(ai|ain|e|ein)?\b/gi, replacement: 'we have received your design' },
+  { pattern: /\bwait\s*mat\s*kar[ei]n\b/gi, replacement: "you don't need to wait" },
+  { pattern: /\bap\s*ko\s*bata\s*(doon|deta|denge)\s*g[ae]\b/gi, replacement: 'I will let you know' },
+  { pattern: /\bkal\s*tak\s*mil\s*jaye\s*g[ai]\b/gi, replacement: 'you will receive it by tomorrow' }
+];
+
+// Word-by-word fallback dictionary for anything the phrase map doesn't catch.
+// Unknown tokens (including English business terms like "digitizing", "DST",
+// "quote", customer names, numbers) are left exactly as typed.
+const ROMAN_URDU_WORD_MAP: Record<string, string> = {
+  me: 'I', main: 'I', hum: 'we', ap: 'you', aap: 'you', apka: 'your', apki: 'your', apko: 'you', apke: 'your',
+  aapka: 'your', aapki: 'your', aapko: 'you', aapke: 'your', ko: '',
+  kia: 'what', kya: 'what', kaisay: 'how', kaise: 'how', kab: 'when', kahan: 'where', kyun: 'why', kyu: 'why',
+  kar: 'do', karo: 'do', karain: 'please do', karen: 'please do', kiya: 'did', kijiye: 'please do',
+  sakta: 'can', sakti: 'can', sakte: 'can',
+  hu: 'am', hun: 'am', hai: 'is', hain: 'are', ho: 'are', tha: 'was', thi: 'was',
+  madad: 'help', chahiye: 'need', zaroorat: 'need',
+  shukriya: 'thank you', meherbani: 'thank you',
+  theek: 'okay', thek: 'okay', acha: 'okay', accha: 'okay', bilkul: 'absolutely', zaroor: 'certainly',
+  jaldi: 'quickly', abhi: 'right now', aj: 'today', aaj: 'today', kal: 'tomorrow', parso: 'day after tomorrow',
+  price: 'price', rate: 'rate', quote: 'quote', paisay: 'money', paise: 'money',
+  bhej: 'send', bhejo: 'send', bhejain: 'please send', bhejen: 'please send', bhijwa: 'send', dedo: 'give',
+  file: 'file', ready: 'ready', taiyar: 'ready', hogi: 'will be', hoga: 'will be', hogaya: 'is done',
+  ghante: 'hours', ghanty: 'hours', ghanta: 'hour', minute: 'minutes', second: 'seconds',
+  wait: 'wait', intezar: 'wait', ruko: 'please wait',
+  plz: 'please', please: 'please',
+  sir: 'sir', madam: 'madam', bhai: '', dost: 'friend',
+  nahi: 'no', nahin: 'no', nai: 'no', na: 'no', han: 'yes', haan: 'yes',
+  ji: '', bilkl: 'sure',
+  design: 'design', digitizing: 'digitizing', vector: 'vector', order: 'order', payment: 'payment', link: 'link',
+  mil: 'received', gaya: '', gayi: '', dekh: 'check', dekhta: 'checking', dekhti: 'checking', dekhen: 'please check',
+  problem: 'problem', masla: 'problem', koi: 'any',
+  fikar: 'worry', chinta: 'worry',
+  bohat: 'very', bahut: 'very', zyada: 'more', kam: 'less', thora: 'a little',
+  confirm: 'confirmed', cancel: 'cancelled', complete: 'complete', pura: 'complete',
+  welcome: 'welcome', khush: 'happy', amdeed: 'welcome',
+  mein: 'in', jaye: '', rahe: 'ing', rahi: 'ing', raha: 'ing', kro: 'do'
+};
+
+// Rough heuristic to detect whether a piece of text is likely Roman Urdu
+// (as opposed to already being plain English), so we know whether the
+// fallback translator should even run.
+function looksLikeRomanUrdu(text: string): boolean {
+  const words = text.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return false;
+  let hits = 0;
+  for (const w of words) {
+    const clean = w.replace(/[^a-z]/g, '');
+    if (ROMAN_URDU_WORD_MAP[clean] !== undefined) hits++;
+  }
+  return hits / words.length >= 0.3; // at least ~30% recognizably Roman Urdu
+}
+
+// Best-effort offline Roman Urdu -> English conversion, used only when
+// Gemini can't be reached. Returns the original text unchanged if it
+// doesn't look like Roman Urdu to begin with (already English).
+function offlineTranslateRomanUrduToEnglish(text: string): { englishText: string; isConverted: boolean } {
+  if (!text || !text.trim()) return { englishText: text, isConverted: false };
+
+  if (!looksLikeRomanUrdu(text)) {
+    return { englishText: text, isConverted: false };
+  }
+
+  let working = text;
+  for (const { pattern, replacement } of ROMAN_URDU_PHRASE_MAP) {
+    working = working.replace(pattern, replacement);
+  }
+
+  const rebuilt = working
+    .split(/(\s+)/)
+    .map(token => {
+      if (/^\s+$/.test(token)) return token;
+      const cleaned = token.replace(/[^a-zA-Z]/g, '').toLowerCase();
+      const punctuation = token.match(/[.,!?]+$/)?.[0] || '';
+      const mapped = ROMAN_URDU_WORD_MAP[cleaned];
+      if (mapped !== undefined) {
+        return mapped + punctuation;
+      }
+      return token; // keep unknown words (names, numbers, DST/PES, etc.) as-is
+    })
+    .join('')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  const finalText = rebuilt.charAt(0).toUpperCase() + rebuilt.slice(1);
+  return { englishText: finalText || text, isConverted: true };
+}
+
 export async function translateTextToRomanUrdu(text: string): Promise<string> {
   if (!text || text.trim().length === 0) return '';
   if (process.env.GEMINI_API_KEY) {
@@ -509,8 +641,8 @@ Message to translate: "${text}"`,
         }
       });
       return response.text?.trim() || text;
-    } catch (err) {
-      console.error('Error translating to Roman Urdu:', err);
+    } catch (err: any) {
+      console.error('Error translating to Roman Urdu:', err?.message || err);
     }
   }
   return `(Roman Urdu) ${text}`;
@@ -551,12 +683,17 @@ export async function polishOrTranslateAgentReply(
           isConverted: parsed.isConverted ?? true
         };
       }
-    } catch (err) {
-      console.error('Error polishing agent reply:', err);
+    } catch (err: any) {
+      console.error('Error polishing agent reply:', err?.message || err);
     }
+  } else {
+    console.warn('polishOrTranslateAgentReply: GEMINI_API_KEY is not set — using offline Roman Urdu fallback translator (lower quality than Gemini). Set GEMINI_API_KEY on this server for proper translation.');
   }
 
-  return { polishedEnglish: agentDraft, isConverted: false };
+  // Safety net: never send raw, un-translated Roman Urdu to a customer just
+  // because Gemini is unavailable — use the offline dictionary translator.
+  const offline = offlineTranslateRomanUrduToEnglish(agentDraft);
+  return { polishedEnglish: offline.englishText, isConverted: offline.isConverted };
 }
 
 export async function generateAgentReplySuggestions(
