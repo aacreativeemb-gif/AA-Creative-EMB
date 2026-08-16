@@ -32,6 +32,8 @@ interface HeaderProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   onOpenEmbedModal: () => void;
+  isAudioMuted?: boolean;
+  onToggleAudioMute?: () => void;
   unreadCount: number;
   openTicketsCount: number;
   onLogout?: () => void;
@@ -48,6 +50,8 @@ export const Header: React.FC<HeaderProps> = ({
   activeTab,
   setActiveTab,
   onOpenEmbedModal,
+  isAudioMuted = false,
+  onToggleAudioMute,
   unreadCount,
   openTicketsCount,
   onLogout
@@ -106,6 +110,22 @@ export const Header: React.FC<HeaderProps> = ({
             <Bell className="w-3.5 h-3.5 text-blue-400" />
             <span className="hidden sm:inline">1s Ding Sound</span>
           </button>
+
+          {/* Mute / Unmute all chat notification sounds */}
+          {onToggleAudioMute && (
+            <button
+              onClick={onToggleAudioMute}
+              className={`flex items-center gap-1.5 border px-2.5 py-1.5 rounded-md text-xs font-medium transition shadow-xs ${
+                isAudioMuted
+                  ? 'bg-rose-950/60 hover:bg-rose-900/60 text-rose-300 border-rose-800'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+              }`}
+              title={isAudioMuted ? 'Unmute chat notification sounds' : 'Mute chat notification sounds'}
+            >
+              {isAudioMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-400" />}
+              <span className="hidden sm:inline">{isAudioMuted ? 'Muted' : 'Sound On'}</span>
+            </button>
+          )}
 
           {/* Embed snippet button */}
           <button
