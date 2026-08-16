@@ -64,6 +64,14 @@ export interface Visitor {
   lastActiveAt: string;
   tags: string[];
   notes: string[];
+  /** Timestamp of the very first time this visitor was ever seen (used for "Arrived At" in Live Visitor Tracking). */
+  firstSeenAt?: string;
+  /** Timestamp this specific browsing session started (resets each new visit). */
+  sessionStartedAt?: string;
+  /** Timestamp offline status began (used to auto-close chats 30 min after visitor disconnects). */
+  offlineSince?: string;
+  /** Timestamp the visitor submitted Name + Email on the pre-chat lead form (a real "lead"). */
+  leadCapturedAt?: string;
 }
 
 export interface Attachment {
@@ -129,6 +137,12 @@ export interface Conversation {
   aiSummary?: AiSummary;
   sourceDetail?: string; // e.g., "From: customer@gmail.com" or "+92 300 1234567"
   queuePosition?: number;
+  /** True once the AI has asked "anything else?" and is waiting for the visitor's final answer before closing. */
+  awaitingCloseConfirmation?: boolean;
+  /** Timestamp the conversation was closed (manually or auto-closed after 30 min visitor inactivity). */
+  closedAt?: string;
+  /** How the conversation ended: agent/AI resolved it, or it auto-expired from visitor inactivity. */
+  closeReason?: 'manual' | 'auto_inactivity' | 'visitor_confirmed_done';
 }
 
 export interface Ticket {
