@@ -120,7 +120,7 @@ fun TicketCard(ticket: Ticket) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "#${ticket.ticketNumber.takeIf { it > 0 } ?: ticket.id.takeLast(4)} • ${ticket.subject.ifBlank { "Support Inquiry" }}",
+                    text = "#${ticket.ticketNumber.ifBlank { ticket.id.takeLast(4) }} • ${ticket.subject.ifBlank { "Support Inquiry" }}",
                     style = MaterialTheme.typography.titleSmall,
                     color = White,
                     fontWeight = FontWeight.Bold,
