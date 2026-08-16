@@ -7,6 +7,59 @@ import { Message, Conversation, Ticket, User } from './src/types';
 import { sendAdminEmailNotification } from './server/mailer';
 import { hashPassword, verifyPassword } from './server/auth';
 
+interface DetectedLocation {
+  country: string;
+  city: string;
+  flag: string;
+}
+
+// Simple in-memory cache so we don't re-look-up the same IP on every
+// heartbeat/message (the free geo-IP API has rate limits).
+const ipLocationCache = new Map<string, DetectedLocation>();
+
+// Detects a visitor's real country from their IP so pricing/currency can be
+// shown correctly (GBP for UK, USD "standard" for USA and every other
+// country — never guesses UK as a fallback, since that would silently show
+// the wrong currency to non-UK visitors).
+async function detectVisitorLocation(clientIp: string): Promise<DetectedLocation> {
+  const fallback: DetectedLocation = { country: 'United States', city: 'Unknown', flag: '🇺🇸' };
+
+  if (!clientIp || clientIp === '127.0.0.1' || clientIp === '::1' || clientIp.startsWith('192.168.') || clientIp.startsWith('10.') || clientIp === '198.51.100.1') {
+    return fallback;
+  }
+
+  const cached = ipLocationCache.get(clientIp);
+  if (cached) return cached;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2000);
+    const response = await fetch(`http://ip-api.com/json/${encodeURIComponent(clientIp)}?fields=status,country,countryCode,city`, {
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+
+    if (response.ok) {
+      const data: any = await response.json();
+      if (data && data.status === 'success' && data.country) {
+        const isUK = data.countryCode === 'GB';
+        const flagMap: Record<string, string> = { GB: '🇬🇧', US: '🇺🇸', CA: '🇨🇦', AU: '🇦🇺', PK: '🇵🇰' };
+        const result: DetectedLocation = {
+          country: isUK ? 'United Kingdom' : data.country,
+          city: data.city || 'Unknown',
+          flag: flagMap[data.countryCode] || '🌍'
+        };
+        ipLocationCache.set(clientIp, result);
+        return result;
+      }
+    }
+  } catch (err) {
+    // Network unavailable / rate-limited / timed out — safe USD-standard fallback below.
+  }
+
+  return fallback;
+}
+
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
@@ -368,20 +421,8 @@ async function startServer() {
       const { visitorId, pageUrl, referrer, visitorName, visitorEmail } = req.body;
       const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || '198.51.100.1';
 
-      // Geolocation heuristic
-      let country = 'United Kingdom';
-      let city = 'London';
-      let flag = '🇬🇧';
-
-      if (clientIp.startsWith('182.') || clientIp.startsWith('39.') || clientIp.startsWith('103.')) {
-        country = 'Pakistan';
-        city = 'Karachi';
-        flag = '🇵🇰';
-      } else if (clientIp.startsWith('104.') || clientIp.startsWith('66.') || clientIp.startsWith('172.')) {
-        country = 'United States';
-        city = 'Dallas, TX';
-        flag = '🇺🇸';
-      }
+      // Real IP-based geolocation (GBP for UK, USD-standard default for everyone else)
+      const { country, city, flag } = await detectVisitorLocation(clientIp);
 
       const userAgent = req.headers['user-agent'] || '';
       const browser = userAgent.includes('Firefox') ? 'Firefox' : userAgent.includes('Edg') ? 'Edge' : userAgent.includes('Safari') && !userAgent.includes('Chrome') ? 'Safari' : 'Chrome';
@@ -469,12 +510,7 @@ async function startServer() {
 
       if (!visitor) {
         isNewVisitor = true;
-        let country = 'United Kingdom', city = 'London', flag = '🇬🇧';
-        if (clientIp.startsWith('182.') || clientIp.startsWith('39.') || clientIp.startsWith('103.')) {
-          country = 'Pakistan'; city = 'Karachi'; flag = '🇵🇰';
-        } else if (clientIp.startsWith('104.') || clientIp.startsWith('66.') || clientIp.startsWith('172.')) {
-          country = 'United States'; city = 'Dallas, TX'; flag = '🇺🇸';
-        }
+        const { country, city, flag } = await detectVisitorLocation(clientIp);
         visitor = {
           id: visitorId,
           propertyId: 'prop_1',
@@ -633,21 +669,9 @@ async function startServer() {
       // Create visitor if not exists
       if (!visitor) {
         const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || '198.51.100.1';
-        
-        // Location detection helper
-        let country = 'United Kingdom';
-        let city = 'London';
-        let flag = '🇬🇧';
 
-        if (clientIp.startsWith('182.') || clientIp.startsWith('39.') || clientIp.startsWith('103.')) {
-          country = 'Pakistan';
-          city = 'Karachi';
-          flag = '🇵🇰';
-        } else if (clientIp.startsWith('104.') || clientIp.startsWith('66.') || clientIp.startsWith('172.')) {
-          country = 'United States';
-          city = 'Dallas, TX';
-          flag = '🇺🇸';
-        }
+        // Real IP-based geolocation (GBP for UK, USD-standard default for everyone else)
+        const { country, city, flag } = await detectVisitorLocation(clientIp);
 
         visitor = {
           id: visitorId || `vis_${Date.now()}`,
@@ -747,7 +771,7 @@ async function startServer() {
           senderType: 'ai',
           senderId: 'ai_assistant',
           senderName: globalStore.aiSettings.aiName || 'AA Support Specialist',
-          text: `You're most welcome, ${visitor.name !== 'Website Visitor' ? visitor.name : 'thanks for reaching out'}! Glad we could help. Have a great day — this chat is now closing. 🙏`,
+          text: `You're most welcome, ${visitor.name !== 'Website Visitor' ? visitor.name : 'thanks for reaching out'}! Glad we could help. Have a great day! 🙏\n\nWe'd really appreciate it if you could rate our support and leave a quick comment below ⭐`,
           timestamp: new Date().toISOString(),
           deliveryStatus: 'delivered',
           channel: conv.channel
@@ -794,7 +818,8 @@ async function startServer() {
           text,
           globalStore.messages[conv.id],
           visitor.name,
-          visitor.email
+          visitor.email,
+          visitor.location?.country
         );
 
         // If AI extracted customer name or email or phone from chat, update visitor record immediately
@@ -824,10 +849,14 @@ async function startServer() {
           isEscalationTrigger: aiResult.shouldEscalate
         };
 
-        // Once the AI has given a non-escalated answer, the next visitor
-        // message is checked for a simple "no thanks" / "that's all" style
-        // reply so the chat can close itself and prompt for a rating.
-        conv.awaitingCloseConfirmation = !aiResult.shouldEscalate;
+        // Once the AI has given a non-escalated answer that genuinely asked
+        // "anything else?" (checked directly against the final reply text,
+        // so it works the same whether Gemini or the fallback engine wrote
+        // it), the next visitor message is checked for a simple "no thanks"
+        // / "that's all" style reply so the chat can close itself and
+        // prompt for a rating.
+        const askedAnythingElse = /anything\s*else|kuch\s*(aur|or)|aur\s*kuch|kisi\s*aur\s*(cheez|chiz)/i.test(aiResult.aiResponseText);
+        conv.awaitingCloseConfirmation = !aiResult.shouldEscalate && askedAnythingElse;
 
         globalStore.messages[conv.id].push(aiMessage);
         conv.lastMessageText = aiResult.aiResponseText;
