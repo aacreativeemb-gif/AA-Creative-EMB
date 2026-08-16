@@ -25,6 +25,17 @@ import path from 'path';
 const DATA_DIR = path.join(process.cwd(), 'data');
 const DB_PATH = path.join(DATA_DIR, 'db.json');
 
+// ---------- Live-session timing rules ----------
+// A visitor who hasn't pinged /api/visitor/track (heartbeat) in this window
+// is considered to have closed the browser / left the site.
+export const VISITOR_HEARTBEAT_TIMEOUT_MS = 50 * 1000; // 50 seconds
+// Once a visitor goes offline, their open chat auto-closes after this long.
+export const AUTO_CLOSE_AFTER_OFFLINE_MS = 30 * 60 * 1000; // 30 minutes
+// If a visitor comes back and starts chatting again within this window of
+// their last message, we resume the same conversation thread instead of
+// starting a brand new one.
+export const RETURNING_SESSION_WINDOW_MS = 60 * 60 * 1000; // 1 hour (standard)
+
 // Fields that get persisted to disk. Deliberately excludes things that
 // should always start fresh (e.g. in-memory OTP codes).
 const PERSISTED_FIELDS = [
@@ -135,6 +146,8 @@ export class AppStore {
       timeOnSiteSeconds: 340,
       status: 'online',
       lastActiveAt: new Date().toISOString(),
+      firstSeenAt: new Date(Date.now() - 3 * 24 * 3600000).toISOString(),
+      sessionStartedAt: new Date(Date.now() - 340000).toISOString(),
       tags: ['UK Apparel', '3D Puff Cap', 'Rush Delivery'],
       notes: ['London apparel decorator requesting 3D puff cap logo digitizing with 2-hour rush delivery.']
     },
@@ -157,6 +170,8 @@ export class AppStore {
       timeOnSiteSeconds: 520,
       status: 'online',
       lastActiveAt: new Date().toISOString(),
+      firstSeenAt: new Date(Date.now() - 9 * 24 * 3600000).toISOString(),
+      sessionStartedAt: new Date(Date.now() - 520000).toISOString(),
       tags: ['UK Workwear', 'Bulk Digitizing', 'VIP Client'],
       notes: ['Requires 40 jacket back embroidery digitizing designs weekly. Requested UK VAT invoice.']
     },
@@ -179,6 +194,8 @@ export class AppStore {
       timeOnSiteSeconds: 180,
       status: 'online',
       lastActiveAt: new Date().toISOString(),
+      firstSeenAt: new Date(Date.now() - 1 * 24 * 3600000).toISOString(),
+      sessionStartedAt: new Date(Date.now() - 180000).toISOString(),
       tags: ['Vector Conversion', 'UK Client'],
       notes: ['Sent low-res PNG logo for vector redraw in EPS/AI format for Manchester sports shop.']
     }
@@ -671,6 +688,51 @@ A: Type "agent", "human digitizer", WhatsApp (+44 7462 23 8732) or email us at a
     }
   };
 
+  // ---------- Live session sweep ----------
+  // Runs on a timer. Marks visitors offline once their heartbeat goes stale,
+  // and auto-closes any chat that's been sitting idle 30 minutes after the
+  // visitor disconnected (browser/tab closed).
+  runSessionSweep() {
+    const now = Date.now();
+
+    for (const visitor of this.visitors) {
+      const lastActive = new Date(visitor.lastActiveAt).getTime();
+
+      // Flip online -> offline once the heartbeat goes stale.
+      if (visitor.status === 'online' && now - lastActive > VISITOR_HEARTBEAT_TIMEOUT_MS) {
+        visitor.status = 'offline';
+        visitor.offlineSince = new Date().toISOString();
+      }
+
+      // Auto-close any still-open chat 30 minutes after the visitor went offline.
+      if (visitor.status === 'offline' && visitor.offlineSince) {
+        const offlineFor = now - new Date(visitor.offlineSince).getTime();
+        if (offlineFor > AUTO_CLOSE_AFTER_OFFLINE_MS) {
+          const openConvs = this.conversations.filter(
+            c => c.visitorId === visitor.id && !['resolved', 'closed'].includes(c.status)
+          );
+          for (const conv of openConvs) {
+            conv.status = 'resolved';
+            conv.closedAt = new Date().toISOString();
+            conv.closeReason = 'auto_inactivity';
+            if (!this.messages[conv.id]) this.messages[conv.id] = [];
+            this.messages[conv.id].push({
+              id: `msg_${Date.now()}_autoclose_${conv.id}`,
+              conversationId: conv.id,
+              senderType: 'system',
+              senderId: 'system',
+              senderName: 'Support System',
+              text: 'This chat was automatically closed after 30 minutes of visitor inactivity.',
+              timestamp: new Date().toISOString(),
+              deliveryStatus: 'delivered',
+              channel: conv.channel
+            });
+          }
+        }
+      }
+    }
+  }
+
   // ---------- Persistence ----------
   persist() {
     try {
@@ -709,6 +771,8 @@ globalStore.hydrate();
 // Periodic autosave (cheap enough to run unconditionally) plus a
 // best-effort save on graceful shutdown signals.
 setInterval(() => globalStore.persist(), 5000);
+// Sweep every 15s for stale heartbeats / auto-close of idle chats.
+setInterval(() => globalStore.runSessionSweep(), 15000);
 process.on('SIGTERM', () => { globalStore.persist(); process.exit(0); });
 process.on('SIGINT', () => { globalStore.persist(); process.exit(0); });
 
