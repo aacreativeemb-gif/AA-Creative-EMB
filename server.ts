@@ -6,11 +6,38 @@ import { processCustomerMessageWithAI, generateAiConversationSummary, translateT
 import { Message, Conversation, Ticket, User } from './src/types';
 import { sendAdminEmailNotification } from './server/mailer';
 import { hashPassword, verifyPassword } from './server/auth';
+import crypto from 'crypto';
 
 interface DetectedLocation {
   country: string;
   city: string;
   flag: string;
+}
+
+// --- Real authentication ---
+// Issues a cryptographically random session token tied to a user, valid for
+// 30 days. This is what actually gates access to admin/agent endpoints —
+// unlike a client-side-only check, this is enforced server-side on every
+// protected request.
+const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+function issueToken(userId: string): string {
+  const token = crypto.randomBytes(32).toString('hex');
+  globalStore.activeTokens[token] = { userId, expiresAt: Date.now() + TOKEN_TTL_MS };
+  return token;
+}
+
+function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  const entry = token ? globalStore.activeTokens[token] : undefined;
+
+  if (!entry || Date.now() > entry.expiresAt) {
+    return res.status(401).json({ success: false, error: 'Not authenticated. Please log in again.' });
+  }
+
+  (req as any).userId = entry.userId;
+  next();
 }
 
 // Simple in-memory cache so we don't re-look-up the same IP on every
@@ -151,7 +178,7 @@ async function startServer() {
       const { passwordHash, ...safeUser } = targetUser;
       return res.json({
         success: true,
-        token: `aa_token_${Date.now()}`,
+        token: issueToken(targetUser.id),
         user: safeUser,
         trustedDevice: true
       });
@@ -231,7 +258,7 @@ async function startServer() {
     const safeAdminUser = adminUser ? (({ passwordHash, ...rest }) => rest)(adminUser) : null;
     return res.json({
       success: true,
-      token: `aa_token_${Date.now()}`,
+      token: adminUser ? issueToken(adminUser.id) : issueToken('unknown'),
       user: safeAdminUser,
       deviceId: deviceId
     });
@@ -309,7 +336,7 @@ async function startServer() {
   });
 
   // Get Email / SMTP configuration status
-  app.get('/api/email/config', (req, res) => {
+  app.get('/api/email/config', requireAuth, (req, res) => {
     const cfg = globalStore.emailConfig;
     res.json({
       smtpUser: cfg.smtpUser,
@@ -321,7 +348,7 @@ async function startServer() {
   });
 
   // Save Email / SMTP configuration
-  app.post('/api/email/config', (req, res) => {
+  app.post('/api/email/config', requireAuth, (req, res) => {
     const { smtpUser, smtpPass, smtpHost, smtpPort, resendApiKey } = req.body;
     if (smtpUser) globalStore.emailConfig.smtpUser = smtpUser.trim();
     if (smtpPass !== undefined) globalStore.emailConfig.smtpPass = smtpPass.trim();
@@ -336,7 +363,7 @@ async function startServer() {
   });
 
   // Send Test Email directly to admin
-  app.post('/api/email/test', async (req, res) => {
+  app.post('/api/email/test', requireAuth, async (req, res) => {
     const targetEmail = req.body.email || 'aacreativeemb@gmail.com';
     const testResult = await sendAdminEmailNotification({
       to: targetEmail,
@@ -374,7 +401,7 @@ async function startServer() {
   });
 
   // Full state endpoint
-  app.get('/api/state', (req, res) => {
+  app.get('/api/state', requireAuth, (req, res) => {
     const safeUsers = globalStore.users.map(({ passwordHash, ...rest }) => rest);
     res.json({
       properties: globalStore.properties,
@@ -399,7 +426,7 @@ async function startServer() {
   // Lightweight polling endpoint used by the public embeddable widget
   // (widget.js) so a visitor's chat window picks up a human agent's reply
   // even when the agent replies later, without the visitor sending anything.
-  app.get('/api/conversations/:id/messages', (req, res) => {
+  app.get('/api/conversations/:id/messages', requireAuth, (req, res) => {
     const { id } = req.params;
     const conv = globalStore.conversations.find(c => c.id === id);
     if (!conv) {
@@ -1073,7 +1100,7 @@ async function startServer() {
   });
 
   // Agent sends message
-  app.post('/api/agent/message', async (req, res) => {
+  app.post('/api/agent/message', requireAuth, async (req, res) => {
     const { conversationId, agentId, text, attachments, autoPolish = true } = req.body;
     const conv = globalStore.conversations.find(c => c.id === conversationId);
     const agent = globalStore.users.find(u => u.id === agentId) || globalStore.users[0];
@@ -1127,7 +1154,7 @@ async function startServer() {
   });
 
   // Agent AI Reply Polish & Suggestion Endpoint
-  app.post('/api/ai/suggest_reply', async (req, res) => {
+  app.post('/api/ai/suggest_reply', requireAuth, async (req, res) => {
     try {
       const { conversationId, agentDraft } = req.body;
       const conv = globalStore.conversations.find(c => c.id === conversationId);
@@ -1157,7 +1184,7 @@ async function startServer() {
   });
 
   // Direct Translate API
-  app.post('/api/translate', async (req, res) => {
+  app.post('/api/translate', requireAuth, async (req, res) => {
     try {
       const { text, targetLanguage = 'roman_urdu' } = req.body;
       if (!text) return res.status(400).json({ error: 'Text is required' });
@@ -1175,7 +1202,7 @@ async function startServer() {
   });
 
   // Assign agent or toggle AI mode
-  app.post('/api/conversations/assign', async (req, res) => {
+  app.post('/api/conversations/assign', requireAuth, async (req, res) => {
     const { conversationId, agentId, departmentId, isAiHandling } = req.body;
     const conv = globalStore.conversations.find(c => c.id === conversationId);
 
@@ -1205,7 +1232,7 @@ async function startServer() {
 
   // Change conversation status (also accepts the visitor's post-chat star
   // rating + comment, submitted from the closing feedback prompt)
-  app.post('/api/conversations/status', (req, res) => {
+  app.post('/api/conversations/status', requireAuth, (req, res) => {
     const { conversationId, status, priority, rating, feedback } = req.body;
     const conv = globalStore.conversations.find(c => c.id === conversationId);
 
@@ -1228,7 +1255,7 @@ async function startServer() {
   });
 
   // Create / Update ticket
-  app.post('/api/tickets', (req, res) => {
+  app.post('/api/tickets', requireAuth, (req, res) => {
     const { id, conversationId, visitorId, visitorName, visitorEmail, subject, description, priority, departmentId, assignedAgentId, tags } = req.body;
 
     if (id) {
@@ -1291,7 +1318,7 @@ async function startServer() {
   });
 
   // User / Agent Status Update Endpoint
-  app.post('/api/users/status', (req, res) => {
+  app.post('/api/users/status', requireAuth, (req, res) => {
     const { userId, status } = req.body;
     const user = globalStore.users.find(u => u.id === userId);
     if (!user) {
@@ -1308,13 +1335,13 @@ async function startServer() {
   // --- AGENT / TEAM MANAGEMENT ---
 
   // List agents (never exposes passwordHash)
-  app.get('/api/admin/agents', (req, res) => {
+  app.get('/api/admin/agents', requireAuth, (req, res) => {
     const safeUsers = globalStore.users.map(({ passwordHash, ...rest }) => rest);
     res.json({ success: true, agents: safeUsers });
   });
 
   // Add a new agent: name, email, userId (login handle), password
-  app.post('/api/admin/agents', (req, res) => {
+  app.post('/api/admin/agents', requireAuth, (req, res) => {
     const { name, email, userId, password, role, departmentIds } = req.body;
 
     if (!name || !email || !password) {
@@ -1359,7 +1386,7 @@ async function startServer() {
   });
 
   // Remove an agent
-  app.delete('/api/admin/agents/:id', (req, res) => {
+  app.delete('/api/admin/agents/:id', requireAuth, (req, res) => {
     const idx = globalStore.users.findIndex(u => u.id === req.params.id);
     if (idx === -1) return res.status(404).json({ success: false, error: 'Agent not found' });
     const removed = globalStore.users.splice(idx, 1)[0];
@@ -1368,7 +1395,7 @@ async function startServer() {
   });
 
   // Save AI Settings & Knowledge
-  app.post('/api/ai/settings', (req, res) => {
+  app.post('/api/ai/settings', requireAuth, (req, res) => {
     globalStore.aiSettings = { ...globalStore.aiSettings, ...req.body };
     globalStore.auditLogs.unshift({
       id: `log_${Date.now()}`,
@@ -1381,7 +1408,7 @@ async function startServer() {
   });
 
   // AI Quality Feedback (Good/Bad response)
-  app.post('/api/ai/qc', (req, res) => {
+  app.post('/api/ai/qc', requireAuth, (req, res) => {
     const { conversationId, messageId, query, aiResponse, rating, notes } = req.body;
     const qc = {
       id: `qc_${Date.now()}`,
@@ -1574,7 +1601,7 @@ async function startServer() {
   });
 
   // Knowledge Base CRUD
-  app.post('/api/kb', (req, res) => {
+  app.post('/api/kb', requireAuth, (req, res) => {
     const { action, article, category } = req.body;
     if (action === 'create_article') {
       const newArt = {
