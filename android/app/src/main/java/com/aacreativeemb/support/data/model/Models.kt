@@ -90,7 +90,7 @@ data class Message(
 
 data class Ticket(
     @SerializedName("id") val id: String,
-    @SerializedName("ticketNumber") val ticketNumber: Int = 0,
+    @SerializedName("ticketNumber") val ticketNumber: String = "",
     @SerializedName("conversationId") val conversationId: String? = null,
     @SerializedName("visitorId") val visitorId: String = "",
     @SerializedName("visitorName") val visitorName: String = "",
