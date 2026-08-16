@@ -76,7 +76,7 @@ fun SettingsScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = (currentUser?.name?.take(2) ?: "AA").toUpperCase(),
+                            text = (currentUser?.name?.take(2) ?: "AA").uppercase(),
                             color = White,
                             fontSize = 22.sp,
                             fontWeight = FontWeight.Bold
@@ -107,7 +107,7 @@ fun SettingsScreen(
                             .padding(horizontal = 8.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = "ROLE: ${currentUser?.role?.toUpperCase() ?: "ADMIN"}",
+                            text = "ROLE: ${currentUser?.role?.uppercase() ?: "ADMIN"}",
                             color = Sky400,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
@@ -159,7 +159,7 @@ fun SettingsScreen(
                                 )
                             ) {
                                 Text(
-                                    text = status.capitalize(),
+                                    text = status.replaceFirstChar { it.uppercase() },
                                     color = if (isSelected) White else Slate300,
                                     fontSize = 12.sp,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal

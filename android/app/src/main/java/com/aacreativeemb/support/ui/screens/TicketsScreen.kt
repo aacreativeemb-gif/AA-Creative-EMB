@@ -141,7 +141,7 @@ fun TicketCard(ticket: Ticket) {
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = ticket.priority.toUpperCase(),
+                        text = ticket.priority.uppercase(),
                         color = when (ticket.priority) {
                             "urgent" -> Rose500
                             "high" -> Amber500
@@ -177,7 +177,7 @@ fun TicketCard(ticket: Ticket) {
                 )
 
                 Text(
-                    text = "Status: ${ticket.status.capitalize()}",
+                    text = "Status: ${ticket.status.replaceFirstChar { it.uppercase() }}",
                     color = if (ticket.status == "open") Emerald500 else Slate400,
                     style = MaterialTheme.typography.bodySmall,
                     fontSize = 11.sp,

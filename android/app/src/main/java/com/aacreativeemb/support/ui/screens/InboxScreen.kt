@@ -99,7 +99,7 @@ fun InboxScreen(
                                 )
                         )
                         Text(
-                            text = "Agent: ${currentUser?.name ?: "Support"} (${currentUser?.status?.capitalize() ?: "Online"})",
+                            text = "Agent: ${currentUser?.name ?: "Support"} (${currentUser?.status?.replaceFirstChar { it.uppercase() } ?: "Online"})",
                             style = MaterialTheme.typography.bodySmall,
                             color = Slate400,
                             fontSize = 11.sp
@@ -252,7 +252,7 @@ fun ConversationCard(
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     // Channel
                     Text(
-                        text = conversation.channel.toUpperCase(),
+                        text = conversation.channel.uppercase(),
                         color = Sky400,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,

@@ -78,7 +78,7 @@ fun ChatScreen(
                             )
                         }
                         Text(
-                            text = "Channel: ${currentConv?.channel?.capitalize() ?: "Website"} • Status: ${currentConv?.status ?: "Open"}",
+                            text = "Channel: ${currentConv?.channel?.replaceFirstChar { it.uppercase() } ?: "Website"} • Status: ${currentConv?.status ?: "Open"}",
                             style = MaterialTheme.typography.bodySmall,
                             color = Slate400,
                             fontSize = 11.sp
