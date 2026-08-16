@@ -119,8 +119,13 @@ fun TicketCard(ticket: Ticket) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val ticketNumberLabel: String =
+                    if (ticket.ticketNumber.isNotBlank()) ticket.ticketNumber else ticket.id.takeLast(4)
+                val subjectLabel: String =
+                    if (ticket.subject.isNotBlank()) ticket.subject else "Support Inquiry"
+
                 Text(
-                    text = "#${ticket.ticketNumber.ifBlank { ticket.id.takeLast(4) }} • ${ticket.subject.ifBlank { "Support Inquiry" }}",
+                    text = "#$ticketNumberLabel • $subjectLabel",
                     style = MaterialTheme.typography.titleSmall,
                     color = White,
                     fontWeight = FontWeight.Bold,
@@ -155,8 +160,11 @@ fun TicketCard(ticket: Ticket) {
 
             Spacer(modifier = Modifier.height(6.dp))
 
+            val descriptionLabel: String =
+                if (ticket.description.isNotBlank()) ticket.description else "No detailed description"
+
             Text(
-                text = ticket.description.ifBlank { "No detailed description" },
+                text = descriptionLabel,
                 style = MaterialTheme.typography.bodySmall,
                 color = Slate400,
                 maxLines = 2
@@ -169,8 +177,14 @@ fun TicketCard(ticket: Ticket) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val customerLabel: String = when {
+                    ticket.visitorName.isNotBlank() -> ticket.visitorName
+                    ticket.visitorEmail.isNotBlank() -> ticket.visitorEmail
+                    else -> "Guest"
+                }
+
                 Text(
-                    text = "Customer: ${ticket.visitorName.ifBlank { ticket.visitorEmail.ifBlank { "Guest" } }}",
+                    text = "Customer: $customerLabel",
                     color = Slate500,
                     style = MaterialTheme.typography.bodySmall,
                     fontSize = 11.sp
