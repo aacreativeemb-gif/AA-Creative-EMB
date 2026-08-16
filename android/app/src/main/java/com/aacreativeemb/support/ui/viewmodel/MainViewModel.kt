@@ -23,6 +23,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val currentUser: StateFlow<User?> = MutableStateFlow(prefs.getCurrentUser()).asStateFlow()
     val currentState: StateFlow<StateResponse?> = repository.currentState
     val isRefreshing: StateFlow<Boolean> = repository.isRefreshing
+    val syncError: StateFlow<String?> = repository.syncError
 
     // Room DB cached streams
     val conversations: Flow<List<ConversationEntity>> = repository.localConversations
