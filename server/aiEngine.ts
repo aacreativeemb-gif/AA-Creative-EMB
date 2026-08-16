@@ -497,6 +497,7 @@ function getFallbackAiResponse(
 }
 
 // ============================================================================
+// ============================================================================
 // OFFLINE SAFETY-NET TRANSLATOR (Roman Urdu -> English)
 // ----------------------------------------------------------------------------
 // This is used ONLY when Gemini is unreachable/misconfigured (e.g. missing
@@ -509,41 +510,56 @@ function getFallbackAiResponse(
 // Common whole support-chat phrases, checked first (best quality when they match).
 // Note: h(ai|ain|e|ein)? below matches all common spellings of "hai"/"hain"/"he"/"hein".
 const ROMAN_URDU_PHRASE_MAP: Array<{ pattern: RegExp; replacement: string }> = [
-  { pattern: /\b(me|main)\s*ap(ki|ka|)\s*kia?\s*madad\s*kar\s*sakta\s*h[uo]n?\b\??/gi, replacement: 'How can I help you?' },
-  { pattern: /\bkia\s*(mein\s*)?ap\s*ki\s*madad\s*kar\s*sakta\s*h[uo]n?\b\??/gi, replacement: 'How can I help you?' },
+  // Greetings & Help
+  { pattern: /\b(me|main)\s*ap(ki|ka|)\s*kia?\s*madad\s*kar\s*sakta\s*h[uo]n?\b\??/gi, replacement: 'How can I assist you today?' },
+  { pattern: /\bkia\s*(mein\s*)?ap\s*ki\s*madad\s*kar\s*sakta\s*h[uo]n?\b\??/gi, replacement: 'How can I assist you today?' },
   { pattern: /\bassalam\s*o?\s*alaikum\b/gi, replacement: 'Hello' },
   { pattern: /\bwalaikum\s*(as)?salam\b/gi, replacement: 'Hello' },
-  { pattern: /\bap\s*kaise\s*h(ai|ain|e|ein)?\b\??/gi, replacement: 'How are you?' },
+  { pattern: /\bap\s*kaise\s*h(ai|ain|e|ein)?\b\??/gi, replacement: 'How are you today?' },
+  { pattern: /\bap\s*k[ae]\s*hal\s*h[ai]*n?\b\??/gi, replacement: 'How are you?' },
   { pattern: /\bshukriya\b/gi, replacement: 'thank you' },
+  { pattern: /\bbohat\s*shukriya\b/gi, replacement: 'thank you very much' },
   { pattern: /\bmehrbani\b/gi, replacement: 'thank you' },
-  { pattern: /\btheek\s*h(ai|ain|e|ein)?\b/gi, replacement: 'okay' },
-  { pattern: /\bthek\s*h(ai|ain|e|ein)?\b/gi, replacement: 'okay' },
-  { pattern: /\bkoi\s*masla\s*nahi[n]?\b/gi, replacement: 'no problem' },
-  { pattern: /\bfikar\s*na\s*kar[ei]n\b/gi, replacement: "don't worry" },
-  { pattern: /\bkitn[ei]\s*ghant[ei]\s*lagen\s*g[ei]\b\??/gi, replacement: 'how many hours will it take?' },
-  { pattern: /\bprice\s*kitni\s*h(ai|ain|e|ein)?\b\??/gi, replacement: 'what is the price?' },
-  { pattern: /\brate\s*kia\s*h(ai|ain|e|ein)?\b\??/gi, replacement: 'what is the rate?' },
-  { pattern: /\bquote\s*bhej\s*(doon|deta|denge)\s*g[ae]\b/gi, replacement: 'I will send the quote' },
-  { pattern: /\bthora\s*wait\s*kar[ei]n\b/gi, replacement: 'please wait a moment' },
-  { pattern: /\border\s*confirm\s*h(ai|ain|e|ein)?\b/gi, replacement: 'the order is confirmed' },
-  { pattern: /\bpayment\s*kar\s*d[ei]n\b/gi, replacement: 'please make the payment' },
-  { pattern: /\blink\s*bhej\s*(raha|rahi)\s*h[uo]n\b/gi, replacement: 'I am sending the link' },
-  { pattern: /\bap\s*ka\s*bohat?\s*shukriya\b/gi, replacement: 'thank you very much' },
-  { pattern: /\bkoi\s*aur\s*madad\s*chahiye\b\??/gi, replacement: 'do you need any more help?' },
-  { pattern: /\bji\s*bilkul\b/gi, replacement: 'yes, absolutely' },
-  { pattern: /\bji\s*han\b/gi, replacement: 'yes' },
-  { pattern: /\bji\s*nahi[n]?\b/gi, replacement: 'no' },
-  // Longer/compound patterns
-  { pattern: /\b(\d+)\s*ghant[ey]?\s*(mein|me)?\s*taiyar\s*ho\s*jaye\s*gi\b/gi, replacement: 'will be ready in $1 hours' },
-  { pattern: /\bfile\s*taiyar\s*ho\s*jaye\s*gi\b/gi, replacement: 'the file will be ready' },
-  { pattern: /\bkal\s*tak\s*ready\s*ho\s*jaye\s*g[ai]\b/gi, replacement: 'will be ready by tomorrow' },
-  { pattern: /\bhum\s*check\s*kar\s*rahe\s*h(ai|ain|e|ein)?\b/gi, replacement: 'we are checking' },
-  { pattern: /\b(mein|me)\s*(abhi\s*)?dekh\s*(raha|rahi)\s*h[uo]n\b/gi, replacement: 'I am checking now' },
-  { pattern: /\bap\s*ka\s*design\s*mil\s*gaya\s*h(ai|ain|e|ein)?\b/gi, replacement: 'we have received your design' },
-  { pattern: /\bdesign\s*mil\s*gaya\s*h(ai|ain|e|ein)?\b/gi, replacement: 'we have received your design' },
-  { pattern: /\bwait\s*mat\s*kar[ei]n\b/gi, replacement: "you don't need to wait" },
-  { pattern: /\bap\s*ko\s*bata\s*(doon|deta|denge)\s*g[ae]\b/gi, replacement: 'I will let you know' },
-  { pattern: /\bkal\s*tak\s*mil\s*jaye\s*g[ai]\b/gi, replacement: 'you will receive it by tomorrow' }
+  { pattern: /\btheek\s*h(ai|ain|e|ein)?\b/gi, replacement: 'all right' },
+  { pattern: /\bthek\s*h(ai|ain|e|ein)?\b/gi, replacement: 'all right' },
+  { pattern: /\bkoi\s*masla\s*nahi[n]?\b/gi, replacement: 'no problem at all' },
+  { pattern: /\bkoi\s*baat\s*nahi[n]?\b/gi, replacement: "no problem at all" },
+  { pattern: /\bfikar\s*na\s*kar[ei]n\b/gi, replacement: "please don't worry" },
+  { pattern: /\btension\s*na\s*l[ei]n\b/gi, replacement: "please don't worry" },
+  { pattern: /\bpareshan\s*na\s*h[uo]n\b/gi, replacement: "please don't worry" },
+
+  // Orders, Files & Quotes
+  { pattern: /\bap\s*ka\s*design\s*mil\s*gaya\s*h(ai|ain|e|ein)?\b/gi, replacement: 'We have received your design artwork.' },
+  { pattern: /\bdesign\s*mil\s*gaya\s*h(ai|ain|e|ein)?\b/gi, replacement: 'We have received your design artwork.' },
+  { pattern: /\bfile\s*mil\s*gayi\s*h(ai|ain|e|ein)?\b/gi, replacement: 'We have received your file.' },
+  { pattern: /\b(mein|me|hum)\s*(abhi\s*)?check\s*kar\s*(raha|rahi|rahe)\s*h[uo]n?\b/gi, replacement: 'I am checking it right now for you.' },
+  { pattern: /\b(mein|me)\s*(abhi\s*)?dekh\s*(raha|rahi)\s*h[uo]n\b/gi, replacement: 'I am reviewing it right now for you.' },
+  { pattern: /\bhum\s*check\s*kar\s*rahe\s*h(ai|ain|e|ein)?\b/gi, replacement: 'We are reviewing it for you.' },
+  { pattern: /\bap\s*ko\s*bata\s*(doon|deta|denge)\s*g[ae]\b/gi, replacement: 'I will update you shortly.' },
+  { pattern: /\bthora\s*(sa\s*)?wait\s*kar[ei]n\b/gi, replacement: 'Please wait a moment.' },
+  { pattern: /\bthora\s*(sa\s*)?intezar\s*kar[ei]n\b/gi, replacement: 'Please hold on for a moment.' },
+  { pattern: /\border\s*confirm\s*h(ai|ain|e|ein)?\b/gi, replacement: 'Your order is confirmed.' },
+  { pattern: /\border\s*confirm\s*kar\s*d[ei]n\b/gi, replacement: 'Please confirm your order.' },
+  { pattern: /\bpayment\s*kar\s*d[ei]n\b/gi, replacement: 'Please proceed with the payment.' },
+  { pattern: /\blink\s*bhej\s*(raha|rahi)\s*h[uo]n\b/gi, replacement: 'I am sending you the link.' },
+  { pattern: /\bpayment\s*link\s*bhej\s*(raha|rahi|diya)\s*h[uo]n?\b/gi, replacement: 'I have sent you the payment link.' },
+  { pattern: /\bquote\s*bhej\s*(raha|rahi|diya|doon|deta|denge)\s*(h[uo]n|g[ae])?\b/gi, replacement: 'I am sending you the official quote.' },
+  { pattern: /\bprice\s*kitni\s*h(ai|ain|e|ein)?\b\??/gi, replacement: 'What is the price?' },
+  { pattern: /\brate\s*kia\s*h(ai|ain|e|ein)?\b\??/gi, replacement: 'What is the rate?' },
+  { pattern: /\bkitn[ei]\s*ghant[ei]\s*lagen\s*g[ei]\b\??/gi, replacement: 'How many hours will it take?' },
+  { pattern: /\b(\d+)\s*ghant[ey]?\s*(mein|me)?\s*(taiyar|ready)\s*ho\s*jaye\s*g[ai]\b/gi, replacement: 'It will be ready in $1 hours.' },
+  { pattern: /\b(\d+)\s*hour[s]?\s*(mein|me)?\s*(taiyar|ready)\s*ho\s*jaye\s*g[ai]\b/gi, replacement: 'It will be ready in $1 hours.' },
+  { pattern: /\bfile\s*(taiyar|ready)\s*ho\s*jaye\s*g[ai]\b/gi, replacement: 'Your files will be ready shortly.' },
+  { pattern: /\bkal\s*tak\s*ready\s*ho\s*jaye\s*g[ai]\b/gi, replacement: 'It will be ready by tomorrow.' },
+  { pattern: /\bkal\s*tak\s*mil\s*jaye\s*g[ai]\b/gi, replacement: 'You will receive it by tomorrow.' },
+  { pattern: /\bkoi\s*aur\s*madad\s*chahiye\b\??/gi, replacement: 'Do you need any further assistance?' },
+  { pattern: /\bkuch\s*aur\s*chahiye\b\??/gi, replacement: 'Is there anything else I can help with?' },
+  { pattern: /\bji\s*bilkul\b/gi, replacement: 'Yes, absolutely.' },
+  { pattern: /\bji\s*han\b/gi, replacement: 'Yes.' },
+  { pattern: /\bji\s*nahi[n]?\b/gi, replacement: 'No.' },
+  { pattern: /\bfile\s*bhej\s*d[ei]n\b/gi, replacement: 'Please send over the artwork/files.' },
+  { pattern: /\bartwork\s*bhej\s*d[ei]n\b/gi, replacement: 'Please provide your artwork.' },
+  { pattern: /\bsize\s*kia\s*h(ai|ain|e|ein)?\b\??/gi, replacement: 'What are the required dimensions?' }
 ];
 
 // Word-by-word fallback dictionary for anything the phrase map doesn't catch.
@@ -551,20 +567,20 @@ const ROMAN_URDU_PHRASE_MAP: Array<{ pattern: RegExp; replacement: string }> = [
 // "quote", customer names, numbers) are left exactly as typed.
 const ROMAN_URDU_WORD_MAP: Record<string, string> = {
   me: 'I', main: 'I', hum: 'we', ap: 'you', aap: 'you', apka: 'your', apki: 'your', apko: 'you', apke: 'your',
-  aapka: 'your', aapki: 'your', aapko: 'you', aapke: 'your', ko: '',
+  aapka: 'your', aapki: 'your', aapko: 'you', aapke: 'your', tum: 'you', tumhara: 'your', tumhari: 'your', ko: '',
   kia: 'what', kya: 'what', kaisay: 'how', kaise: 'how', kab: 'when', kahan: 'where', kyun: 'why', kyu: 'why',
-  kar: 'do', karo: 'do', karain: 'please do', karen: 'please do', kiya: 'did', kijiye: 'please do',
+  kar: 'do', karo: 'do', karain: 'please do', karen: 'please do', kiya: 'did', kijiye: 'please do', kardo: 'please do',
   sakta: 'can', sakti: 'can', sakte: 'can',
-  hu: 'am', hun: 'am', hai: 'is', hain: 'are', ho: 'are', tha: 'was', thi: 'was',
+  hu: 'am', hun: 'am', hoon: 'am', hai: 'is', hain: 'are', ho: 'are', tha: 'was', thi: 'was', the: 'were',
   madad: 'help', chahiye: 'need', zaroorat: 'need',
   shukriya: 'thank you', meherbani: 'thank you',
   theek: 'okay', thek: 'okay', acha: 'okay', accha: 'okay', bilkul: 'absolutely', zaroor: 'certainly',
   jaldi: 'quickly', abhi: 'right now', aj: 'today', aaj: 'today', kal: 'tomorrow', parso: 'day after tomorrow',
-  price: 'price', rate: 'rate', quote: 'quote', paisay: 'money', paise: 'money',
-  bhej: 'send', bhejo: 'send', bhejain: 'please send', bhejen: 'please send', bhijwa: 'send', dedo: 'give',
-  file: 'file', ready: 'ready', taiyar: 'ready', hogi: 'will be', hoga: 'will be', hogaya: 'is done',
+  price: 'price', rate: 'rate', quote: 'quote', paisay: 'money', paise: 'money', pound: '£', dollar: '$',
+  bhej: 'send', bhejo: 'send', bhejain: 'please send', bhejen: 'please send', bhijwa: 'send', dedo: 'give', dien: 'give', de: 'give',
+  file: 'file', ready: 'ready', taiyar: 'ready', tayar: 'ready', hogi: 'will be', hoga: 'will be', hogaya: 'is done', hogayi: 'is done',
   ghante: 'hours', ghanty: 'hours', ghanta: 'hour', minute: 'minutes', second: 'seconds',
-  wait: 'wait', intezar: 'wait', ruko: 'please wait',
+  wait: 'wait', intezar: 'wait', ruko: 'please wait', rukain: 'please wait',
   plz: 'please', please: 'please',
   sir: 'sir', madam: 'madam', bhai: '', dost: 'friend',
   nahi: 'no', nahin: 'no', nai: 'no', na: 'no', han: 'yes', haan: 'yes',
@@ -572,11 +588,12 @@ const ROMAN_URDU_WORD_MAP: Record<string, string> = {
   design: 'design', digitizing: 'digitizing', vector: 'vector', order: 'order', payment: 'payment', link: 'link',
   mil: 'received', gaya: '', gayi: '', dekh: 'check', dekhta: 'checking', dekhti: 'checking', dekhen: 'please check',
   problem: 'problem', masla: 'problem', koi: 'any',
-  fikar: 'worry', chinta: 'worry',
+  fikar: 'worry', chinta: 'worry', tension: 'worry',
   bohat: 'very', bahut: 'very', zyada: 'more', kam: 'less', thora: 'a little',
   confirm: 'confirmed', cancel: 'cancelled', complete: 'complete', pura: 'complete',
   welcome: 'welcome', khush: 'happy', amdeed: 'welcome',
-  mein: 'in', jaye: '', rahe: 'ing', rahi: 'ing', raha: 'ing', kro: 'do'
+  mein: 'in', jaye: '', rahe: 'ing', rahi: 'ing', raha: 'ing', kro: 'do',
+  size: 'size', dimensions: 'dimensions', left: 'left', chest: 'chest', cap: 'cap', hat: 'hat', puff: 'puff', flat: 'flat'
 };
 
 // Rough heuristic to detect whether a piece of text is likely Roman Urdu
@@ -590,7 +607,7 @@ function looksLikeRomanUrdu(text: string): boolean {
     const clean = w.replace(/[^a-z]/g, '');
     if (ROMAN_URDU_WORD_MAP[clean] !== undefined) hits++;
   }
-  return hits / words.length >= 0.3; // at least ~30% recognizably Roman Urdu
+  return hits / words.length >= 0.25; // at least ~25% recognizably Roman Urdu
 }
 
 // Best-effort offline Roman Urdu -> English conversion, used only when
@@ -599,13 +616,17 @@ function looksLikeRomanUrdu(text: string): boolean {
 function offlineTranslateRomanUrduToEnglish(text: string): { englishText: string; isConverted: boolean } {
   if (!text || !text.trim()) return { englishText: text, isConverted: false };
 
-  if (!looksLikeRomanUrdu(text)) {
-    return { englishText: text, isConverted: false };
+  let working = text;
+  let matchedPhrase = false;
+  for (const { pattern, replacement } of ROMAN_URDU_PHRASE_MAP) {
+    if (pattern.test(working)) {
+      matchedPhrase = true;
+      working = working.replace(pattern, replacement);
+    }
   }
 
-  let working = text;
-  for (const { pattern, replacement } of ROMAN_URDU_PHRASE_MAP) {
-    working = working.replace(pattern, replacement);
+  if (!matchedPhrase && !looksLikeRomanUrdu(text)) {
+    return { englishText: text, isConverted: false };
   }
 
   const rebuilt = working
@@ -633,7 +654,7 @@ export async function translateTextToRomanUrdu(text: string): Promise<string> {
   if (process.env.GEMINI_API_KEY) {
     try {
       const response = await ai.models.generateContent({
-        model: process.env.GEMINI_MODEL || 'gemini-3.6-flash',
+        model: process.env.GEMINI_MODEL || 'gemini-3.7-flash',
         contents: `Translate the following customer message into natural, easy-to-read Roman Urdu (Urdu written in Latin alphabet). Keep embroidery terms intact (DST, PES, EMB, 3D puff, cap, vector, quote, rate, turnaround).
 Message to translate: "${text}"`,
         config: {
@@ -658,12 +679,27 @@ export async function polishOrTranslateAgentReply(
 
   if (process.env.GEMINI_API_KEY) {
     try {
-      const historyStr = conversationHistory.slice(-4).map(m => `${m.senderName}: ${m.text}`).join('\n');
+      const historyStr = conversationHistory.slice(-6).map(m => `${m.senderName} (${m.senderType}): ${m.text}`).join('\n');
+      const systemInstruction = `You are the Roman Urdu-to-British English Translator and Customer Support Polisher for AA Creative Embroidery UK Ltd (embroidery digitizing and vector art company in London, UK).
+
+Context & Objective:
+- Support agents/admins often type in Roman Urdu (Urdu written in Latin/English alphabets, e.g. "apka design mil gaya hai me check kar k batata hun", "kia apko DST aur PES dono formats chahiye?", "price £4 hogi aur 2 ghante me ready ho jaye gi", "payment link bhej raha hun", "tension na lein high quality digitizing hogi").
+- The end customer is a UK or international visitor who only reads English.
+- Your job is to accurately understand what the admin wants to communicate in Roman Urdu, Hindi, Urdu script, or broken shorthand English, and translate/rephrase it into clear, courteous, and highly professional British English customer service phrasing.
+- Retain all technical specs, embroidery file formats (DST, PES, EMB, EXP, JEF, AI, EPS, SVG, PDF), sizes (left chest, cap, jacket back, dimensions), prices (£ / $), and turnaround times.
+- If the agent's draft is already in clear English, refine any minor grammar and keep it natural.
+
+Return ONLY a JSON object with:
+- "polishedEnglish": The refined, polite English text ready to be sent to the customer.
+- "isConverted": true if the draft was Roman Urdu / broken English that was translated or modified, false if already perfect English.`;
+
+      const promptContent = `Customer Conversation History:\n${historyStr || '(New conversation)'}\n\nAgent Draft Input: "${agentDraft}"\n\nUnderstand the agent's intent in Roman Urdu / shorthand and translate/polish it into professional British English customer service text.`;
+
       const response = await ai.models.generateContent({
-        model: process.env.GEMINI_MODEL || 'gemini-3.6-flash',
-        contents: `Chat History:\n${historyStr}\n\nAgent Draft Input (may be Roman Urdu, broken/shorthand English, or Urdu): "${agentDraft}"\n\nTask: Polish or convert this agent reply into professional, grammatically correct British English for AA Creative Embroidery UK Ltd support chat.`,
+        model: process.env.GEMINI_MODEL || 'gemini-3.7-flash',
+        contents: promptContent,
         config: {
-          systemInstruction: 'Respond in JSON with key "polishedEnglish" containing the clean professional English message, and key "isConverted" (boolean true if the input was Roman Urdu or broken English).',
+          systemInstruction,
           responseMimeType: 'application/json',
           responseSchema: {
             type: Type.OBJECT,
@@ -677,17 +713,17 @@ export async function polishOrTranslateAgentReply(
       });
 
       const parsed = JSON.parse(response.text || '{}');
-      if (parsed.polishedEnglish) {
+      if (parsed.polishedEnglish && parsed.polishedEnglish.trim().length > 0) {
         return {
-          polishedEnglish: parsed.polishedEnglish,
+          polishedEnglish: parsed.polishedEnglish.trim(),
           isConverted: parsed.isConverted ?? true
         };
       }
     } catch (err: any) {
-      console.error('Error polishing agent reply:', err?.message || err);
+      console.error('Error polishing/translating agent reply via Gemini:', err?.message || err);
     }
   } else {
-    console.warn('polishOrTranslateAgentReply: GEMINI_API_KEY is not set — using offline Roman Urdu fallback translator (lower quality than Gemini). Set GEMINI_API_KEY on this server for proper translation.');
+    console.warn('polishOrTranslateAgentReply: GEMINI_API_KEY is not set — using offline Roman Urdu fallback translator.');
   }
 
   // Safety net: never send raw, un-translated Roman Urdu to a customer just
@@ -708,7 +744,7 @@ export async function generateAgentReplySuggestions(
         : `Customer Chat History:\n${historyStr}\n\nGenerate 3 smart, helpful British English reply options for the support agent to send.`;
 
       const response = await ai.models.generateContent({
-        model: process.env.GEMINI_MODEL || 'gemini-3.6-flash',
+        model: process.env.GEMINI_MODEL || 'gemini-3.7-flash',
         contents: prompt,
         config: {
           responseMimeType: 'application/json',
@@ -737,7 +773,7 @@ export async function generateAgentReplySuggestions(
 
   return [
     "Thank you for reaching out to AA Creative Embroidery! I have reviewed your inquiry and we can process your digitizing with 2-4 hour express delivery.",
-    "Our rates for left chest and cap digitizing start at £4 ($5) with Tajima DST, Brother PES, and Wilcom EMB source files included.",
+    "Our rates for left chest and cap digitizing start at £3 ($5) with Tajima DST, Brother PES, and Wilcom EMB source files included.",
     "Could you please share your design artwork and required dimensions so we can review the stitch count and send you an accurate quote?"
   ];
 }
