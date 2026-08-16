@@ -54,7 +54,7 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const navItems = [
     { id: 'widget_testbench', label: 'Visitor Widget Preview', icon: MessageSquare, badge: null },
-    { id: 'unified_inbox', label: 'Unified Inbox', icon: Mail, badge: unreadCount > 0 ? unreadCount : null },
+    { id: 'unified_inbox', label: 'Admin Chat', icon: Mail, badge: unreadCount > 0 ? unreadCount : null },
     { id: 'visitor_tracker', label: 'Live Visitor Tracking', icon: Users, badge: 'Live' },
     { id: 'ai_admin', label: 'AI Support Agent & KB', icon: Bot, highlight: true },
     { id: 'ticketing', label: 'Tickets & SLA', icon: Ticket, badge: openTicketsCount > 0 ? openTicketsCount : null },
