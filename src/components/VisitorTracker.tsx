@@ -32,6 +32,16 @@ export const VisitorTracker: React.FC<VisitorTrackerProps> = ({
   const [closingId, setClosingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  const formatArrival = (iso?: string) => {
+    if (!iso) return { date: '—', time: '—' };
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return { date: '—', time: '—' };
+    return {
+      date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      time: d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+    };
+  };
+
   const handleClose = async (vis: Visitor) => {
     setClosingId(vis.id);
     try {
@@ -106,6 +116,7 @@ export const VisitorTracker: React.FC<VisitorTrackerProps> = ({
             <thead>
               <tr className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
                 <th className="p-3">Visitor Name & Info</th>
+                <th className="p-3">Arrived At</th>
                 <th className="p-3">Location & IP</th>
                 <th className="p-3">Current Active URL</th>
                 <th className="p-3">Device & OS</th>
@@ -134,10 +145,28 @@ export const VisitorTracker: React.FC<VisitorTrackerProps> = ({
                                 In Chat
                               </span>
                             )}
+                            <span
+                              className={`px-1.5 py-0.5 text-[10px] font-bold rounded border ${
+                                vis.visitsCount <= 1
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : 'bg-amber-50 text-amber-700 border-amber-200'
+                              }`}
+                            >
+                              {vis.visitsCount <= 1 ? 'New' : 'Existing'}
+                            </span>
                           </div>
                           <p className="text-[11px] text-slate-400">{vis.email}</p>
                         </div>
                       </div>
+                    </td>
+
+                    <td className="p-3">
+                      <div className="font-semibold text-slate-800">
+                        {formatArrival(vis.sessionStartedAt || vis.firstSeenAt).date}
+                      </div>
+                      <p className="text-[10px] text-slate-400">
+                        {formatArrival(vis.sessionStartedAt || vis.firstSeenAt).time}
+                      </p>
                     </td>
 
                     <td className="p-3">
