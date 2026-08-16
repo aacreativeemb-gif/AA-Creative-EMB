@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">AA Creative Support</string>
+    <string name="notification_channel_name">Support Messages &amp; Visitors</string>
+    <string name="notification_channel_desc">Real-time alerts for incoming chats and live website visitors</string>
+</resources>

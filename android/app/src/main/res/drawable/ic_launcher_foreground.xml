@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- AA Monogram + Chat Bubble -->
+    <path
+        android:fillColor="#4F46E5"
+        android:pathData="M54,20 C35.2,20 20,33.4 20,50 C20,58.2 23.8,65.6 30,71 L26,86 L42,78.5 C45.8,79.5 49.8,80 54,80 C72.8,80 88,66.6 88,50 C88,33.4 72.8,20 54,20 Z" />
+    <path
+        android:fillColor="#38BDF8"
+        android:pathData="M43,40 L35,62 L41,62 L42.5,57.5 L49.5,57.5 L51,62 L57,62 L49,40 L43,40 Z M44,53 L46,46 L48,53 L44,53 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M61,40 L53,62 L59,62 L60.5,57.5 L67.5,57.5 L69,62 L75,62 L67,40 L61,40 Z M62,53 L64,46 L66,53 L62,53 Z" />
+</vector>
