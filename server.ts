@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import { globalStore } from './server/store';
+import { globalStore, RETURNING_SESSION_WINDOW_MS } from './server/store';
 import { processCustomerMessageWithAI, generateAiConversationSummary, translateTextToRomanUrdu, polishOrTranslateAgentReply, generateAgentReplySuggestions } from './server/aiEngine';
 import { Message, Conversation, Ticket, User } from './src/types';
 import { sendAdminEmailNotification } from './server/mailer';
@@ -343,10 +343,26 @@ async function startServer() {
     });
   });
 
-  // Cache to debounce visitor arrival emails (1 alert per visitor per 10 mins)
-  const recentVisitorNotified: Record<string, number> = {};
+  // Lightweight polling endpoint used by the public embeddable widget
+  // (widget.js) so a visitor's chat window picks up a human agent's reply
+  // even when the agent replies later, without the visitor sending anything.
+  app.get('/api/conversations/:id/messages', (req, res) => {
+    const { id } = req.params;
+    const conv = globalStore.conversations.find(c => c.id === id);
+    if (!conv) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+    return res.json({
+      success: true,
+      conversation: conv,
+      messages: globalStore.messages[id] || []
+    });
+  });
 
-  // Track New Website Visitor on Page Load & Dispatch Real Email Alert
+  // Cache to debounce the "lead captured" email (1 alert per visitor per 10 mins)
+  const recentLeadNotified: Record<string, number> = {};
+
+  // Track New Website Visitor on Page Load / Heartbeat Ping (no email here — see /api/visitor/lead)
   app.post('/api/visitor/track', async (req, res) => {
     try {
       const { visitorId, pageUrl, referrer, visitorName, visitorEmail } = req.body;
@@ -374,6 +390,7 @@ async function startServer() {
 
       let visitor = globalStore.visitors.find(v => v.id === visitorId || (v.ip === clientIp && v.status === 'online'));
       let isBrandNewVisitor = false;
+      const nowIso = new Date().toISOString();
 
       if (!visitor) {
         isBrandNewVisitor = true;
@@ -389,59 +406,176 @@ async function startServer() {
           device,
           currentUrl: pageUrl || 'https://aacreativeemb.com/',
           landingPage: pageUrl || 'https://aacreativeemb.com/',
-          referrer: referrer || 'Direct / Organic',
+          referrer: referrer || 'Direct Website Visit',
           visitsCount: 1,
           pagesViewed: 1,
           timeOnSiteSeconds: 5,
           status: 'online',
-          lastActiveAt: new Date().toISOString(),
+          lastActiveAt: nowIso,
+          firstSeenAt: nowIso,
+          sessionStartedAt: nowIso,
           tags: ['Active Visitor'],
           notes: [`Arrived via ${referrer || 'Direct'}`]
         };
         globalStore.visitors.unshift(visitor);
       } else {
+        // A visitor is "returning to the site" (a fresh session) if they were
+        // previously offline. Only then do we reset the session arrival clock —
+        // this is what powers the "Arrived At" column & New/Existing badge.
+        const wasOffline = visitor.status !== 'online';
         visitor.status = 'online';
-        visitor.lastActiveAt = new Date().toISOString();
+        visitor.lastActiveAt = nowIso;
+        visitor.offlineSince = undefined;
+        if (wasOffline) {
+          visitor.sessionStartedAt = nowIso;
+          visitor.visitsCount += 1;
+        }
+        if (!visitor.firstSeenAt) visitor.firstSeenAt = nowIso;
         visitor.pagesViewed += 1;
         if (pageUrl) visitor.currentUrl = pageUrl;
       }
 
-      // Check if we should dispatch immediate Email Notification
-      const lastAlertTime = recentVisitorNotified[visitor.id] || recentVisitorNotified[clientIp] || 0;
-      const now = Date.now();
-      const shouldSendEmailAlert = (now - lastAlertTime > 10 * 60 * 1000) || isBrandNewVisitor;
+      // NOTE: no email is sent here on page load / heartbeat. Per policy, the
+      // admin email alert only fires once the visitor actually enters the chat
+      // and submits their Name + Email on the pre-chat lead form — see
+      // POST /api/visitor/lead below. The live in-dashboard bell/toast (handled
+      // client-side via /api/state polling) still fires immediately on arrival.
 
-      if (shouldSendEmailAlert) {
-        recentVisitorNotified[visitor.id] = now;
-        recentVisitorNotified[clientIp] = now;
+      return res.json({
+        success: true,
+        visitor,
+        isNew: isBrandNewVisitor || visitor.visitsCount <= 1
+      });
+    } catch (err: any) {
+      console.error('Error tracking visitor:', err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
 
+  // Visitor submits the pre-chat Name + Email form. This is the ONLY place
+  // that (a) creates a real lead and (b) dispatches the admin email alert —
+  // nothing is emailed just for landing on the page or opening the widget.
+  app.post('/api/visitor/lead', async (req, res) => {
+    try {
+      const { visitorId, name, email, pageUrl } = req.body;
+      if (!visitorId || !name || !email) {
+        return res.status(400).json({ error: 'visitorId, name and email are required.' });
+      }
+
+      let visitor = globalStore.visitors.find(v => v.id === visitorId);
+      const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || '198.51.100.1';
+      const nowIso = new Date().toISOString();
+      let isNewVisitor = false;
+
+      if (!visitor) {
+        isNewVisitor = true;
+        let country = 'United Kingdom', city = 'London', flag = '🇬🇧';
+        if (clientIp.startsWith('182.') || clientIp.startsWith('39.') || clientIp.startsWith('103.')) {
+          country = 'Pakistan'; city = 'Karachi'; flag = '🇵🇰';
+        } else if (clientIp.startsWith('104.') || clientIp.startsWith('66.') || clientIp.startsWith('172.')) {
+          country = 'United States'; city = 'Dallas, TX'; flag = '🇺🇸';
+        }
+        visitor = {
+          id: visitorId,
+          propertyId: 'prop_1',
+          name, email,
+          ip: clientIp,
+          location: { country, city, flag },
+          browser: 'Chrome', os: 'Windows 11', device: 'Desktop',
+          currentUrl: pageUrl || 'https://aacreativeemb.com/',
+          landingPage: pageUrl || 'https://aacreativeemb.com/',
+          referrer: 'Direct Website Visit',
+          visitsCount: 1,
+          pagesViewed: 1,
+          timeOnSiteSeconds: 5,
+          status: 'online',
+          lastActiveAt: nowIso,
+          firstSeenAt: nowIso,
+          sessionStartedAt: nowIso,
+          leadCapturedAt: nowIso,
+          tags: ['New Lead'],
+          notes: []
+        };
+        globalStore.visitors.unshift(visitor);
+      } else {
+        isNewVisitor = visitor.visitsCount <= 1;
+        visitor.name = name;
+        visitor.email = email;
+        visitor.status = 'online';
+        visitor.lastActiveAt = nowIso;
+        visitor.offlineSince = undefined;
+        if (!visitor.leadCapturedAt) visitor.leadCapturedAt = nowIso;
+        if (!visitor.firstSeenAt) visitor.firstSeenAt = nowIso;
+      }
+
+      // Decide: resume the visitor's existing chat thread, or start a clean
+      // new one. We resume only if they have an open thread that was active
+      // within the last hour (the "standard" returning-session window).
+      const existingConv = globalStore.conversations
+        .filter(c => c.visitorId === visitor!.id)
+        .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime())[0];
+
+      let isFreshChatSession = true;
+      let conversation: Conversation | undefined = undefined;
+
+      if (existingConv) {
+        const isClosed = ['resolved', 'closed'].includes(existingConv.status);
+        const isStale = Date.now() - new Date(existingConv.lastMessageAt).getTime() > RETURNING_SESSION_WINDOW_MS;
+        if (!isClosed && !isStale) {
+          conversation = existingConv;
+          isFreshChatSession = false;
+        }
+      }
+
+      if (!conversation) {
+        conversation = {
+          id: `conv_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          propertyId: 'prop_1',
+          visitorId: visitor.id,
+          channel: 'website',
+          departmentId: 'dept_support',
+          assignedAgentId: null,
+          isAiHandling: globalStore.aiSettings.mode !== 'human_only',
+          status: 'open',
+          priority: 'normal',
+          subject: `Live Chat with ${name}`,
+          lastMessageText: '',
+          lastMessageAt: nowIso,
+          unreadCountAgent: 0,
+          unreadCountVisitor: 0,
+          sourceDetail: `Website Live Chat (${visitor.location.country} ${visitor.location.flag})`
+        };
+        globalStore.conversations.unshift(conversation);
+        globalStore.messages[conversation.id] = [];
+      }
+
+      // Dispatch the real admin email alert now that we have a genuine lead —
+      // debounced so re-submitting the form doesn't spam the inbox.
+      const lastAlertTime = recentLeadNotified[visitor.id] || 0;
+      if (Date.now() - lastAlertTime > 10 * 60 * 1000) {
+        recentLeadNotified[visitor.id] = Date.now();
+        const arrivalDate = new Date(visitor.sessionStartedAt || nowIso);
         sendAdminEmailNotification({
           to: 'aacreativeemb@gmail.com',
-          subject: `👀 [Live Alert] New Visitor on AA Creative Embroidery (${flag} ${country})`,
-          text: `Hello Admin,\n\nA new visitor just landed on your website!\n\nLocation: ${flag} ${city}, ${country}\nIP Address: ${clientIp}\nActive URL: ${visitor.currentUrl}\nReferrer: ${visitor.referrer}\nDevice: ${device} (${browser} on ${os})\nTime: ${new Date().toLocaleString()}\n\nOpen live support chat: https://chat.aacreativeemb.com\n\nAA Creative Embroidery UK`,
+          subject: `🔔 [Live Chat Lead] ${name} started a chat (${visitor.location.flag} ${visitor.location.country})`,
+          text: `Hello Admin,\n\nA customer just entered live chat on AA Creative Embroidery.\n\nStatus: ${isNewVisitor ? 'NEW customer' : 'EXISTING / returning customer'}\nName: ${name}\nEmail: ${email}\nDate: ${arrivalDate.toLocaleDateString()}\nTime: ${arrivalDate.toLocaleTimeString()}\nIP Address: ${clientIp}\nLocation: ${visitor.location.flag} ${visitor.location.city}, ${visitor.location.country}\nCurrent Page: ${visitor.currentUrl}\n\nOpen live chat: https://chat.aacreativeemb.com\n\nAA Creative Embroidery UK`,
           html: `
             <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #0f172a; color: #ffffff; padding: 24px; border-radius: 12px; border: 1px solid #1e293b;">
               <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #334155; padding-bottom: 14px; margin-bottom: 16px;">
-                <h3 style="color: #38bdf8; margin: 0; font-size: 18px;">👀 New Live Website Visitor</h3>
-                <span style="background: #065f46; color: #34d399; font-size: 11px; padding: 4px 8px; border-radius: 6px; font-weight: bold;">LIVE NOW</span>
+                <h3 style="color: #38bdf8; margin: 0; font-size: 18px;">💬 New Live Chat Lead</h3>
+                <span style="background: ${isNewVisitor ? '#065f46' : '#78350f'}; color: ${isNewVisitor ? '#34d399' : '#fcd34d'}; font-size: 11px; padding: 4px 8px; border-radius: 6px; font-weight: bold;">${isNewVisitor ? 'NEW CUSTOMER' : 'EXISTING CUSTOMER'}</span>
               </div>
-              
-              <p style="color: #cbd5e1; font-size: 14px; margin: 0 0 16px 0;">
-                A new user just arrived on <strong>AA Creative Embroidery</strong>.
-              </p>
-
               <div style="background: #1e293b; padding: 16px; border-radius: 8px; font-size: 13px; line-height: 1.6; color: #f1f5f9; margin-bottom: 20px;">
-                <p style="margin: 0 0 6px 0;"><strong>🌍 Location:</strong> ${flag} ${city}, ${country}</p>
+                <p style="margin: 0 0 6px 0;"><strong>👤 Name:</strong> ${name}</p>
+                <p style="margin: 0 0 6px 0;"><strong>✉️ Email:</strong> ${email}</p>
+                <p style="margin: 0 0 6px 0;"><strong>🌍 Location:</strong> ${visitor.location.flag} ${visitor.location.city}, ${visitor.location.country}</p>
                 <p style="margin: 0 0 6px 0;"><strong>🌐 IP Address:</strong> <code>${clientIp}</code></p>
-                <p style="margin: 0 0 6px 0;"><strong>🔗 Active Page:</strong> <a href="${visitor.currentUrl}" style="color: #818cf8; text-decoration: none;">${visitor.currentUrl}</a></p>
-                <p style="margin: 0 0 6px 0;"><strong>🧭 Traffic Source / Referrer:</strong> ${visitor.referrer}</p>
-                <p style="margin: 0 0 6px 0;"><strong>💻 Device & Browser:</strong> ${device} • ${browser} on ${os}</p>
-                <p style="margin: 0;"><strong>⏰ Arrival Time:</strong> ${new Date().toLocaleString()}</p>
+                <p style="margin: 0 0 6px 0;"><strong>📅 Date:</strong> ${arrivalDate.toLocaleDateString()}</p>
+                <p style="margin: 0;"><strong>⏰ Time:</strong> ${arrivalDate.toLocaleTimeString()}</p>
               </div>
-
               <div style="text-align: center;">
                 <a href="https://chat.aacreativeemb.com" style="display: inline-block; background: #4f46e5; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; font-size: 14px;">
-                  🚀 Open Live Chat & Monitor Visitor
+                  🚀 Open Live Chat
                 </a>
               </div>
             </div>
@@ -452,11 +586,13 @@ async function startServer() {
       return res.json({
         success: true,
         visitor,
-        isNew: isBrandNewVisitor
+        conversation,
+        isNewVisitor,
+        isFreshChatSession
       });
     } catch (err: any) {
-      console.error('Error tracking visitor:', err);
-      return res.status(500).json({ error: err.message });
+      console.error('Error in /api/visitor/lead:', err);
+      return res.status(500).json({ error: err.message || 'Internal server error' });
     }
   });
 
@@ -471,6 +607,28 @@ async function startServer() {
 
       let conv = globalStore.conversations.find(c => c.id === conversationId);
       let visitor = globalStore.visitors.find(v => v.id === visitorId);
+
+      // If the found conversation is already closed, or has been sitting idle
+      // for more than the "returning session" window (standard: 1 hour), don't
+      // reuse it — start a brand-new, clean chat thread instead.
+      let forceNewConversation = false;
+      if (conv) {
+        const isClosed = ['resolved', 'closed'].includes(conv.status);
+        const isStale = Date.now() - new Date(conv.lastMessageAt).getTime() > RETURNING_SESSION_WINDOW_MS;
+        if (isClosed || isStale) {
+          forceNewConversation = true;
+          conv = undefined;
+        }
+      }
+
+      // Closing-intent shortcut: if the AI/agent's last reply asked "anything
+      // else?" and the visitor is now simply confirming they're done, we skip
+      // routing back through the AI and close the chat with a feedback prompt.
+      let visitorConfirmedDone = false;
+      if (conv && conv.awaitingCloseConfirmation && text) {
+        const closingPattern = /^\s*(no|nahi|nai|na|nope|no\s*thanks?|nothing\s*else|that'?s\s*all|thats\s*all|that\s*is\s*all|thanks?(\s*you)?|thank\s*you(\s*so\s*much)?|ok(ay)?\s*thanks?|theek\s*hai(\s*shukriya)?|shukriya|bye|goodbye|khuda\s*hafiz)\s*[.!]*\s*$/i;
+        visitorConfirmedDone = closingPattern.test(text.trim());
+      }
 
       // Create visitor if not exists
       if (!visitor) {
@@ -530,7 +688,7 @@ async function startServer() {
       // Create conversation if not exists
       if (!conv) {
         conv = {
-          id: conversationId || `conv_${Date.now()}`,
+          id: forceNewConversation ? `conv_${Date.now()}_${Math.random().toString(36).slice(2, 7)}` : (conversationId || `conv_${Date.now()}`),
           propertyId: 'prop_1',
           visitorId: visitor.id,
           channel: channel as any,
@@ -578,6 +736,42 @@ async function startServer() {
       conv.lastMessageText = text;
       conv.lastMessageAt = visitorMsg.timestamp;
       conv.unreadCountAgent += 1;
+      conv.awaitingCloseConfirmation = false;
+
+      // Visitor confirmed they don't need anything else — close the chat here
+      // (no AI/agent round-trip needed) and prompt them to rate the session.
+      if (visitorConfirmedDone) {
+        const closingMsg: Message = {
+          id: `msg_${Date.now()}_close`,
+          conversationId: conv.id,
+          senderType: 'ai',
+          senderId: 'ai_assistant',
+          senderName: globalStore.aiSettings.aiName || 'AA Support Specialist',
+          text: `You're most welcome, ${visitor.name !== 'Website Visitor' ? visitor.name : 'thanks for reaching out'}! Glad we could help. Have a great day — this chat is now closing. 🙏`,
+          timestamp: new Date().toISOString(),
+          deliveryStatus: 'delivered',
+          channel: conv.channel
+        };
+        globalStore.messages[conv.id].push(closingMsg);
+
+        conv.status = 'resolved';
+        conv.closedAt = new Date().toISOString();
+        conv.closeReason = 'visitor_confirmed_done';
+        conv.lastMessageText = closingMsg.text;
+        conv.lastMessageAt = closingMsg.timestamp;
+        conv.unreadCountAgent = 0;
+
+        return res.json({
+          success: true,
+          conversation: conv,
+          visitorMessage: visitorMsg,
+          aiMessage: closingMsg,
+          isAiHandling: conv.isAiHandling,
+          status: conv.status,
+          promptFeedback: true,
+          newConversationId: forceNewConversation ? conv.id : undefined
+        });
+      }
 
       // Check online human agents
       const onlineAgents = globalStore.users.filter(u => u.status === 'online');
@@ -629,6 +823,11 @@ async function startServer() {
           languageDetected: 'English',
           isEscalationTrigger: aiResult.shouldEscalate
         };
+
+        // Once the AI has given a non-escalated answer, the next visitor
+        // message is checked for a simple "no thanks" / "that's all" style
+        // reply so the chat can close itself and prompt for a rating.
+        conv.awaitingCloseConfirmation = !aiResult.shouldEscalate;
 
         globalStore.messages[conv.id].push(aiMessage);
         conv.lastMessageText = aiResult.aiResponseText;
@@ -835,7 +1034,8 @@ async function startServer() {
         visitorMessage: visitorMsg,
         aiMessage,
         isAiHandling: conv.isAiHandling,
-        status: conv.status
+        status: conv.status,
+        newConversationId: forceNewConversation ? conv.id : undefined
       });
     } catch (err: any) {
       console.error('Error in /api/visitor/message:', err);
@@ -974,17 +1174,26 @@ async function startServer() {
     res.json({ success: true, conversation: conv });
   });
 
-  // Change conversation status
+  // Change conversation status (also accepts the visitor's post-chat star
+  // rating + comment, submitted from the closing feedback prompt)
   app.post('/api/conversations/status', (req, res) => {
-    const { conversationId, status, priority } = req.body;
+    const { conversationId, status, priority, rating, feedback } = req.body;
     const conv = globalStore.conversations.find(c => c.id === conversationId);
 
     if (!conv) {
       return res.status(404).json({ error: 'Conversation not found' });
     }
 
-    if (status) conv.status = status;
+    if (status) {
+      conv.status = status;
+      if (['resolved', 'closed'].includes(status)) {
+        conv.closedAt = conv.closedAt || new Date().toISOString();
+        conv.closeReason = conv.closeReason || 'manual';
+      }
+    }
     if (priority) conv.priority = priority;
+    if (typeof rating === 'number') conv.rating = rating;
+    if (typeof feedback === 'string' && feedback.trim()) conv.feedback = feedback.trim();
 
     res.json({ success: true, conversation: conv });
   });
@@ -1368,7 +1577,7 @@ async function startServer() {
     var scripts = document.getElementsByTagName('script');
     return scripts[scripts.length - 1];
   })();
-  
+
   var serverUrl = 'https://chat.aacreativeemb.com';
   if (scriptEl && scriptEl.src) {
     try {
@@ -1380,6 +1589,7 @@ async function startServer() {
   var storageKeyVisitor = 'aa_emb_vis_id';
   var storageKeyConv = 'aa_emb_conv_id';
   var storageKeyMsgs = 'aa_emb_msgs';
+  var storageKeyLead = 'aa_emb_lead';
 
   var visitorId = localStorage.getItem(storageKeyVisitor);
   if (!visitorId) {
@@ -1387,25 +1597,14 @@ async function startServer() {
     localStorage.setItem(storageKeyVisitor, visitorId);
   }
 
-  var conversationId = localStorage.getItem(storageKeyConv);
-  if (!conversationId) {
-    conversationId = 'conv_' + Math.random().toString(36).substr(2, 9);
-    localStorage.setItem(storageKeyConv, conversationId);
-  }
+  var conversationId = localStorage.getItem(storageKeyConv) || null;
 
-  // Ping Server to Log Live Visitor & Dispatch Instant Admin Email Alert
+  var leadInfo = null;
   try {
-    fetch(serverUrl + '/api/visitor/track', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        visitorId: visitorId,
-        pageUrl: window.location.href,
-        referrer: document.referrer || 'Direct Website Visit',
-        pageTitle: document.title
-      })
-    }).catch(function() {});
-  } catch(e) {}
+    leadInfo = JSON.parse(localStorage.getItem(storageKeyLead) || 'null');
+  } catch(e) {
+    leadInfo = null;
+  }
 
   var savedMsgs = [];
   try {
@@ -1414,13 +1613,46 @@ async function startServer() {
     savedMsgs = [];
   }
 
-  if (savedMsgs.length === 0) {
+  if (leadInfo && savedMsgs.length === 0) {
     savedMsgs.push({
       id: 'welcome_1',
       sender: 'ai',
-      text: 'Hello! Welcome to AA Creative Embroidery. Which project can we assist you with today — Embroidery Digitizing or Vector Art Conversion?',
+      text: 'Hello! Welcome to AA Creative Embroidery. Which project can we assist you with today \u2014 Embroidery Digitizing or Vector Art Conversion?',
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     });
+  }
+
+  var feedbackShownForConv = null;
+  var pollTimer = null;
+  var heartbeatTimer = null;
+  var hasSyncedThisLoad = false;
+  var closeAfterFeedback = false;
+
+  // --- Heartbeat: tells the server this visitor is still actively on the
+  // page, so they don't flip to "offline" after 50s of silence (which would
+  // start the 30-minute auto-close countdown on any open chat).
+  function sendHeartbeat() {
+    try {
+      fetch(serverUrl + '/api/visitor/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          visitorId: visitorId,
+          pageUrl: window.location.href,
+          referrer: document.referrer || 'Direct Website Visit',
+          pageTitle: document.title
+        })
+      }).catch(function() {});
+    } catch(e) {}
+  }
+  sendHeartbeat();
+  heartbeatTimer = setInterval(sendHeartbeat, 25000);
+
+  function escapeHtml(str) {
+    return String(str == null ? '' : str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
   }
 
   // Inject Styles
@@ -1463,6 +1695,14 @@ async function startServer() {
       border: 2.5px solid #ffffff;
       border-radius: 50%;
     }
+    #aa-chat-launcher.aa-has-unread #aa-chat-badge {
+      background: #ef4444;
+      animation: aaPulseBadge 1s ease-in-out infinite;
+    }
+    @keyframes aaPulseBadge {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.35); }
+    }
     #aa-chat-box {
       position: fixed;
       bottom: 96px;
@@ -1493,6 +1733,7 @@ async function startServer() {
       align-items: center;
       justify-content: space-between;
       border-bottom: 1px solid rgba(255,255,255,0.1);
+      flex-shrink: 0;
     }
     .aa-agent-info {
       display: flex;
@@ -1545,6 +1786,68 @@ async function startServer() {
     #aa-close-btn:hover {
       opacity: 1;
     }
+    #aa-prechat-screen {
+      display: none;
+      flex: 1;
+      padding: 22px 20px;
+      background: #f8fafc;
+      flex-direction: column;
+      justify-content: center;
+    }
+    #aa-chat-box.aa-needs-lead #aa-prechat-screen {
+      display: flex;
+    }
+    #aa-chat-box.aa-needs-lead #aa-messages-container,
+    #aa-chat-box.aa-needs-lead #aa-typing,
+    #aa-chat-box.aa-needs-lead #aa-quick-actions,
+    #aa-chat-box.aa-needs-lead #aa-input-bar {
+      display: none !important;
+    }
+    .aa-prechat-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #1e293b;
+      margin: 0 0 4px 0;
+    }
+    .aa-prechat-sub {
+      font-size: 12.5px;
+      color: #64748b;
+      margin: 0 0 16px 0;
+      line-height: 1.5;
+    }
+    .aa-prechat-input {
+      width: 100%;
+      margin-bottom: 10px;
+      padding: 11px 13px;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      font-size: 13.5px;
+      box-sizing: border-box;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .aa-prechat-input:focus {
+      border-color: #6366f1;
+    }
+    #aa-prechat-submit {
+      width: 100%;
+      padding: 12px;
+      background: #4f46e5;
+      color: #ffffff;
+      border: none;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 13.5px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #aa-prechat-submit:hover {
+      background: #4338ca;
+    }
+    #aa-prechat-submit:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
     #aa-messages-container {
       flex: 1;
       padding: 16px;
@@ -1576,6 +1879,19 @@ async function startServer() {
       color: #ffffff;
       border-bottom-right-radius: 4px;
     }
+    .aa-msg-system {
+      align-self: center;
+      background: #fef3c7;
+      color: #92400e;
+      border: 1px solid #fde68a;
+      font-size: 11px;
+      font-weight: 500;
+      padding: 6px 12px;
+      border-radius: 12px;
+      margin: 2px auto;
+      text-align: center;
+      max-width: 90%;
+    }
     .aa-msg-time {
       font-size: 10px;
       margin-top: 4px;
@@ -1590,6 +1906,7 @@ async function startServer() {
       gap: 6px;
       overflow-x: auto;
       white-space: nowrap;
+      flex-shrink: 0;
     }
     .aa-pill {
       background: #f1f5f9;
@@ -1615,6 +1932,7 @@ async function startServer() {
       display: flex;
       align-items: center;
       gap: 8px;
+      flex-shrink: 0;
     }
     #aa-text-input {
       flex: 1;
@@ -1652,6 +1970,98 @@ async function startServer() {
       color: #64748b;
       font-style: italic;
       padding: 2px 8px;
+    }
+    #aa-feedback-overlay {
+      display: none;
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.55);
+      align-items: center;
+      justify-content: center;
+      z-index: 30;
+      padding: 20px;
+    }
+    #aa-feedback-overlay.aa-show {
+      display: flex;
+    }
+    .aa-feedback-box {
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 20px;
+      width: 100%;
+      max-width: 270px;
+      text-align: center;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+    }
+    .aa-feedback-title {
+      font-size: 14.5px;
+      font-weight: 700;
+      color: #1e293b;
+      margin: 0 0 4px 0;
+    }
+    .aa-feedback-sub {
+      font-size: 12px;
+      color: #64748b;
+      margin: 0 0 12px 0;
+    }
+    #aa-star-row {
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .aa-star {
+      font-size: 26px;
+      line-height: 1;
+      cursor: pointer;
+      color: #cbd5e1;
+      transition: color 0.15s, transform 0.15s;
+      user-select: none;
+    }
+    .aa-star:hover {
+      transform: scale(1.12);
+    }
+    #aa-feedback-text {
+      width: 100%;
+      box-sizing: border-box;
+      font-size: 12.5px;
+      padding: 8px 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      outline: none;
+      resize: none;
+      margin-bottom: 12px;
+      font-family: inherit;
+    }
+    .aa-feedback-actions {
+      display: flex;
+      gap: 8px;
+    }
+    #aa-feedback-skip {
+      flex: 1;
+      padding: 9px;
+      background: #ffffff;
+      color: #64748b;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #aa-feedback-submit {
+      flex: 1;
+      padding: 9px;
+      background: #4f46e5;
+      color: #ffffff;
+      border: none;
+      border-radius: 10px;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #aa-feedback-submit:disabled {
+      opacity: 0.6;
+      cursor: default;
     }
     @media (max-width: 480px) {
       #aa-chat-box {
@@ -1694,13 +2104,20 @@ async function startServer() {
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
       </button>
     </div>
+    <div id="aa-prechat-screen">
+      <p class="aa-prechat-title">Start a conversation</p>
+      <p class="aa-prechat-sub">Please share your name &amp; email so our team can assist you properly.</p>
+      <input type="text" id="aa-prechat-name" class="aa-prechat-input" placeholder="Your Name" autocomplete="off" />
+      <input type="email" id="aa-prechat-email" class="aa-prechat-input" placeholder="Your Email" autocomplete="off" />
+      <button type="button" id="aa-prechat-submit">Start Chat</button>
+    </div>
     <div id="aa-messages-container"></div>
     <div id="aa-typing">Support agent is typing...</div>
     <div id="aa-quick-actions">
-      <span class="aa-pill" data-q="What are your embroidery digitizing rates?">🧵 Digitizing Rates</span>
-      <span class="aa-pill" data-q="How long does logo digitizing take?">⚡ Turnaround Time</span>
-      <span class="aa-pill" data-q="Which stitch formats do you provide?">📁 Formats (DST/PES)</span>
-      <span class="aa-pill" data-q="I want a free quote for my embroidery design.">💬 Get Quote</span>
+      <span class="aa-pill" data-q="What are your embroidery digitizing rates?">\ud83e\uddf5 Digitizing Rates</span>
+      <span class="aa-pill" data-q="How long does logo digitizing take?">\u26a1 Turnaround Time</span>
+      <span class="aa-pill" data-q="Which stitch formats do you provide?">\ud83d\udcc1 Formats (DST/PES)</span>
+      <span class="aa-pill" data-q="I want a free quote for my embroidery design.">\ud83d\udcac Get Quote</span>
     </div>
     <form id="aa-input-bar">
       <input type="text" id="aa-text-input" placeholder="Type your message here..." autocomplete="off" />
@@ -1708,6 +2125,24 @@ async function startServer() {
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
       </button>
     </form>
+    <div id="aa-feedback-overlay">
+      <div class="aa-feedback-box">
+        <p class="aa-feedback-title">Rate Your Support Session</p>
+        <p class="aa-feedback-sub">How was your conversation with our team?</p>
+        <div id="aa-star-row">
+          <span class="aa-star" data-star="1">\u2605</span>
+          <span class="aa-star" data-star="2">\u2605</span>
+          <span class="aa-star" data-star="3">\u2605</span>
+          <span class="aa-star" data-star="4">\u2605</span>
+          <span class="aa-star" data-star="5">\u2605</span>
+        </div>
+        <textarea id="aa-feedback-text" rows="2" placeholder="Optional comments..."></textarea>
+        <div class="aa-feedback-actions">
+          <button type="button" id="aa-feedback-skip">Skip</button>
+          <button type="button" id="aa-feedback-submit">Submit</button>
+        </div>
+      </div>
+    </div>
   \`;
   document.body.appendChild(chatBox);
 
@@ -1716,13 +2151,38 @@ async function startServer() {
   var inputEl = chatBox.querySelector('#aa-text-input');
   var formEl = chatBox.querySelector('#aa-input-bar');
   var closeBtn = chatBox.querySelector('#aa-close-btn');
+  var prechatNameInput = chatBox.querySelector('#aa-prechat-name');
+  var prechatEmailInput = chatBox.querySelector('#aa-prechat-email');
+  var prechatSubmitBtn = chatBox.querySelector('#aa-prechat-submit');
+  var feedbackOverlay = chatBox.querySelector('#aa-feedback-overlay');
+  var feedbackStars = chatBox.querySelectorAll('.aa-star');
+  var feedbackTextEl = chatBox.querySelector('#aa-feedback-text');
+  var feedbackSkipBtn = chatBox.querySelector('#aa-feedback-skip');
+  var feedbackSubmitBtn = chatBox.querySelector('#aa-feedback-submit');
+  var currentRating = 5;
+
+  function updateLeadUI() {
+    if (leadInfo) {
+      chatBox.classList.remove('aa-needs-lead');
+    } else {
+      chatBox.classList.add('aa-needs-lead');
+    }
+  }
+  updateLeadUI();
 
   function renderMessages() {
     msgContainer.innerHTML = '';
     savedMsgs.forEach(function(m) {
+      if (m.sender === 'system') {
+        var sdiv = document.createElement('div');
+        sdiv.className = 'aa-msg-system';
+        sdiv.textContent = m.text;
+        msgContainer.appendChild(sdiv);
+        return;
+      }
       var div = document.createElement('div');
       div.className = 'aa-msg ' + (m.sender === 'visitor' ? 'aa-msg-visitor' : 'aa-msg-ai');
-      div.innerHTML = '<div>' + m.text.replace(/\\n/g, '<br/>') + '</div><div class="aa-msg-time">' + (m.time || '') + '</div>';
+      div.innerHTML = '<div>' + escapeHtml(m.text).replace(/\\n/g, '<br/>') + '</div><div class="aa-msg-time">' + (m.time || '') + '</div>';
       msgContainer.appendChild(div);
     });
     msgContainer.scrollTop = msgContainer.scrollHeight;
@@ -1735,13 +2195,28 @@ async function startServer() {
     isOpen = !isOpen;
     chatBox.style.display = isOpen ? 'flex' : 'none';
     if (isOpen) {
+      launcher.classList.remove('aa-has-unread');
+      if (leadInfo && !hasSyncedThisLoad) {
+        hasSyncedThisLoad = true;
+        establishConversation(leadInfo.name, leadInfo.email, true).catch(function() {});
+      }
       inputEl.focus();
       msgContainer.scrollTop = msgContainer.scrollHeight;
     }
   }
 
   launcher.addEventListener('click', toggleChat);
-  closeBtn.addEventListener('click', toggleChat);
+
+  closeBtn.addEventListener('click', function() {
+    var visitorHasChatted = savedMsgs.some(function(m) { return m.sender === 'visitor'; });
+    if (conversationId && visitorHasChatted && feedbackShownForConv !== conversationId) {
+      feedbackShownForConv = conversationId;
+      closeAfterFeedback = true;
+      showFeedback();
+      return;
+    }
+    toggleChat();
+  });
 
   // Quick Action Pills Click
   chatBox.querySelectorAll('.aa-pill').forEach(function(pill) {
@@ -1759,7 +2234,113 @@ async function startServer() {
     sendMessage(val);
   });
 
+  // --- Pre-chat Name + Email gate ---
+  function submitLeadFromForm() {
+    var name = prechatNameInput.value.trim();
+    var email = prechatEmailInput.value.trim();
+    if (!name || !email) return;
+    prechatSubmitBtn.disabled = true;
+    prechatSubmitBtn.textContent = 'Starting...';
+    establishConversation(name, email, false)
+      .then(function() {
+        prechatSubmitBtn.disabled = false;
+        prechatSubmitBtn.textContent = 'Start Chat';
+        inputEl.focus();
+      })
+      .catch(function(err) {
+        prechatSubmitBtn.disabled = false;
+        prechatSubmitBtn.textContent = 'Start Chat';
+        console.error('Lead submit error:', err);
+      });
+  }
+  prechatSubmitBtn.addEventListener('click', submitLeadFromForm);
+  prechatNameInput.addEventListener('keypress', function(e) { if (e.key === 'Enter') submitLeadFromForm(); });
+  prechatEmailInput.addEventListener('keypress', function(e) { if (e.key === 'Enter') submitLeadFromForm(); });
+  if (leadInfo) {
+    prechatNameInput.value = leadInfo.name || '';
+    prechatEmailInput.value = leadInfo.email || '';
+  }
+
+  // Submits (or silently re-syncs) the Name+Email lead. This is the ONLY
+  // place that creates a real lead / triggers the admin email alert
+  // server-side. It also decides resume-vs-fresh chat thread and, when
+  // silent === true, re-runs automatically each time the widget is opened
+  // (using the cached name/email) so the "standard" 1-hour resume window
+  // is honoured without asking the visitor again.
+  function establishConversation(name, email, silent) {
+    return fetch(serverUrl + '/api/visitor/lead', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        visitorId: visitorId,
+        name: name,
+        email: email,
+        pageUrl: window.location.href
+      })
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (!data || !data.success) return;
+
+      leadInfo = { name: name, email: email };
+      localStorage.setItem(storageKeyLead, JSON.stringify(leadInfo));
+
+      var newConvId = data.conversation ? data.conversation.id : null;
+      var isDifferentConv = !!(newConvId && newConvId !== conversationId);
+
+      if (newConvId) {
+        conversationId = newConvId;
+        localStorage.setItem(storageKeyConv, conversationId);
+      }
+
+      if (data.isFreshChatSession || isDifferentConv || savedMsgs.length === 0) {
+        savedMsgs = [{
+          id: 'welcome_1',
+          sender: 'ai',
+          text: 'Hello ' + name + '! Welcome to AA Creative Embroidery. Which project can we assist you with today \u2014 Embroidery Digitizing or Vector Art Conversion?',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }];
+        localStorage.setItem(storageKeyMsgs, JSON.stringify(savedMsgs));
+        renderMessages();
+        feedbackShownForConv = null;
+      } else if (conversationId && !silent) {
+        loadConversationHistory(conversationId);
+        feedbackShownForConv = null;
+      } else if (conversationId && silent) {
+        loadConversationHistory(conversationId);
+      }
+
+      updateLeadUI();
+      startPolling();
+    });
+  }
+
+  // Pull full message history for a resumed conversation from the server
+  // (used both after lead-submit resume and on returning-visitor re-sync).
+  function loadConversationHistory(convId) {
+    return fetch(serverUrl + '/api/conversations/' + convId + '/messages')
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        if (!data || !data.success) return;
+        var mapped = (data.messages || []).map(function(m) {
+          return {
+            id: m.id,
+            sender: m.senderType === 'visitor' ? 'visitor' : (m.senderType === 'system' ? 'system' : 'ai'),
+            text: m.text,
+            time: new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          };
+        });
+        if (mapped.length > 0) {
+          savedMsgs = mapped;
+          localStorage.setItem(storageKeyMsgs, JSON.stringify(savedMsgs));
+        }
+        renderMessages();
+      })
+      .catch(function() {});
+  }
+
   function sendMessage(text) {
+    if (!conversationId) return;
     inputEl.value = '';
     var userMsg = {
       id: 'msg_' + Date.now(),
@@ -1780,7 +2361,8 @@ async function startServer() {
       body: JSON.stringify({
         conversationId: conversationId,
         visitorId: visitorId,
-        visitorName: 'Website Visitor',
+        visitorName: leadInfo ? leadInfo.name : 'Website Visitor',
+        visitorEmail: leadInfo ? leadInfo.email : undefined,
         text: text,
         channel: 'website'
       })
@@ -1788,7 +2370,17 @@ async function startServer() {
     .then(function(res) { return res.json(); })
     .then(function(data) {
       typingIndicator.style.display = 'none';
-      if (data && data.aiMessage) {
+      if (!data) return;
+
+      // Previous thread was closed/stale -- server started a brand-new,
+      // clean conversation. Adopt its id so replies & polling stay in sync.
+      if (data.newConversationId && data.newConversationId !== conversationId) {
+        conversationId = data.newConversationId;
+        localStorage.setItem(storageKeyConv, conversationId);
+        feedbackShownForConv = null;
+      }
+
+      if (data.aiMessage) {
         savedMsgs.push({
           id: data.aiMessage.id,
           sender: 'ai',
@@ -1798,6 +2390,11 @@ async function startServer() {
         localStorage.setItem(storageKeyMsgs, JSON.stringify(savedMsgs));
         renderMessages();
       }
+
+      if (data.promptFeedback && feedbackShownForConv !== conversationId) {
+        feedbackShownForConv = conversationId;
+        showFeedback();
+      }
     })
     .catch(function(err) {
       typingIndicator.style.display = 'none';
@@ -1805,9 +2402,129 @@ async function startServer() {
     });
   }
 
+  // --- Polling: picks up a human agent's reply even if the visitor never
+  // sends another message themselves (human handoff would otherwise be
+  // invisible to the widget). Also detects the chat being closed/resolved
+  // from the admin side and prompts for a rating.
+  function startPolling() {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(pollForReplies, 4000);
+  }
+
+  function pollForReplies() {
+    if (!conversationId) return;
+    fetch(serverUrl + '/api/conversations/' + conversationId + '/messages')
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        if (!data || !data.success) return;
+
+        var knownIds = {};
+        savedMsgs.forEach(function(m) { knownIds[m.id] = true; });
+
+        var appended = false;
+        (data.messages || []).forEach(function(m) {
+          if (knownIds[m.id]) return;
+          knownIds[m.id] = true;
+          if (m.senderType === 'visitor') return; // already rendered locally on send
+          savedMsgs.push({
+            id: m.id,
+            sender: m.senderType === 'system' ? 'system' : 'ai',
+            text: m.text,
+            time: new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          });
+          appended = true;
+        });
+
+        if (appended) {
+          localStorage.setItem(storageKeyMsgs, JSON.stringify(savedMsgs));
+          renderMessages();
+          if (!isOpen) {
+            launcher.classList.add('aa-has-unread');
+          }
+        }
+
+        if (data.conversation && data.conversation.status === 'resolved' && feedbackShownForConv !== conversationId) {
+          feedbackShownForConv = conversationId;
+          showFeedback();
+        }
+      })
+      .catch(function() {});
+  }
+
+  // --- Feedback / rating modal ---
+  function paintStars(n) {
+    feedbackStars.forEach(function(s) {
+      var v = parseInt(s.getAttribute('data-star'), 10);
+      s.style.color = v <= n ? '#f59e0b' : '#cbd5e1';
+    });
+  }
+
+  feedbackStars.forEach(function(s) {
+    s.addEventListener('click', function() {
+      currentRating = parseInt(s.getAttribute('data-star'), 10);
+      paintStars(currentRating);
+    });
+  });
+
+  function showFeedback() {
+    currentRating = 5;
+    paintStars(currentRating);
+    feedbackTextEl.value = '';
+    feedbackOverlay.classList.add('aa-show');
+    if (!isOpen) {
+      isOpen = true;
+      chatBox.style.display = 'flex';
+      launcher.classList.remove('aa-has-unread');
+    }
+  }
+
+  function hideFeedback() {
+    feedbackOverlay.classList.remove('aa-show');
+    if (closeAfterFeedback) {
+      closeAfterFeedback = false;
+      if (isOpen) toggleChat();
+    }
+  }
+
+  feedbackSkipBtn.addEventListener('click', function() {
+    hideFeedback();
+  });
+
+  feedbackSubmitBtn.addEventListener('click', function() {
+    if (!conversationId) {
+      hideFeedback();
+      return;
+    }
+    feedbackSubmitBtn.disabled = true;
+    fetch(serverUrl + '/api/conversations/status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        conversationId: conversationId,
+        status: 'resolved',
+        rating: currentRating,
+        feedback: feedbackTextEl.value.trim()
+      })
+    })
+    .then(function() {
+      feedbackSubmitBtn.disabled = false;
+      hideFeedback();
+    })
+    .catch(function() {
+      feedbackSubmitBtn.disabled = false;
+      hideFeedback();
+    });
+  });
+
+  // If this browser already has a captured lead from a previous visit,
+  // silently sync with the server once the widget first opens (see
+  // toggleChat) rather than on every page load, to avoid unnecessary
+  // background requests for visitors who never open the chat.
+
 })();
     `);
   });
+
 
   // Vite Middleware integration for SPA dev & static dist fallback for prod
   if (process.env.NODE_ENV !== 'production') {
