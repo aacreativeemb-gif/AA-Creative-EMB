@@ -19,7 +19,6 @@ jobs:
       with:
         java-version: '17'
         distribution: 'temurin'
-        cache: 'gradle'
 
     - name: Set up Android SDK
       uses: android-actions/setup-android@v3
@@ -29,19 +28,16 @@ jobs:
         yes | sdkmanager --licenses || true
         sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
 
-    - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v4
-      with:
-        gradle-version: '8.7'
-
-    - name: Build Debug APK
+    - name: Setup Gradle Wrapper & Build APK
       env:
         ANDROID_HOME: /usr/local/lib/android/sdk
         ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
       run: |
         cd android
-        chmod +x gradlew || true
-        gradle assembleDebug -x lint -x test --stacktrace --no-daemon || ./gradlew assembleDebug -x lint -x test --stacktrace --no-daemon
+        echo "sdk.dir=/usr/local/lib/android/sdk" > local.properties
+        gradle wrapper --gradle-version 8.7
+        chmod +x gradlew
+        ./gradlew assembleDebug --no-daemon --stacktrace
 
     - name: Upload Debug APK Artifact
       uses: actions/upload-artifact@v4
