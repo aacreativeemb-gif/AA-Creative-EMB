@@ -42,7 +42,7 @@ const PERSISTED_FIELDS = [
   'properties', 'users', 'departments', 'visitors', 'conversations', 'messages',
   'tickets', 'kbCategories', 'kbArticles', 'aiSettings', 'qcFeedbacks',
   'unansweredQuestions', 'triggers', 'cannedResponses', 'auditLogs',
-  'adminPassword', 'trustedDeviceIds', 'emailConfig', 'analytics'
+  'adminPassword', 'trustedDeviceIds', 'emailConfig', 'analytics', 'activeTokens'
 ] as const;
 
 export class AppStore {
@@ -671,6 +671,9 @@ A: Type "agent", "human digitizer", WhatsApp (+44 7462 23 8732) or email us at a
   // Admin Security & 2FA State
   adminPassword: string = 'Admin@123';
   trustedDeviceIds: string[] = [];
+  // Real session tokens issued after successful login/2FA. Any request to a
+  // protected endpoint must present one of these as "Authorization: Bearer <token>".
+  activeTokens: Record<string, { userId: string; expiresAt: number }> = {};
   activeOtps: { [email: string]: { code: string; expiresAt: number; type: 'login' | 'reset' } } = {};
 
   // Email Notification & SMTP Dispatch Config
