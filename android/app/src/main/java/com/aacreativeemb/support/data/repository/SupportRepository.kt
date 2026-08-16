@@ -1,6 +1,7 @@
 package com.aacreativeemb.support.data.repository
 
 import android.content.Context
+import android.util.Log
 import com.aacreativeemb.support.data.api.ApiClient
 import com.aacreativeemb.support.data.local.*
 import com.aacreativeemb.support.data.model.*
@@ -10,6 +11,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+
+private const val TAG = "SupportRepository"
 
 class SupportRepository(context: Context) {
 
@@ -23,6 +26,12 @@ class SupportRepository(context: Context) {
 
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing = _isRefreshing.asStateFlow()
+
+    // Human-readable reason the last sync failed (network error, server error,
+    // parsing error, etc.) — null when the last sync succeeded. The UI shows
+    // this as a banner instead of silently staying empty forever.
+    private val _syncError = MutableStateFlow<String?>(null)
+    val syncError = _syncError.asStateFlow()
 
     // Local cached flows
     val localConversations: Flow<List<ConversationEntity>> = db.conversationDao().getAllConversations()
@@ -43,6 +52,7 @@ class SupportRepository(context: Context) {
             if (response.isSuccessful && response.body() != null) {
                 val state = response.body()!!
                 _currentState.value = state
+                _syncError.value = null
 
                 // Cache in Room DB
                 val visitorMap = state.visitors.associateBy { it.id }
@@ -112,9 +122,16 @@ class SupportRepository(context: Context) {
 
                 Result.success(state)
             } else {
-                Result.failure(Exception("Failed to fetch state: ${response.code()} ${response.message()}"))
+                val errorBody = try { response.errorBody()?.string() } catch (e: Exception) { null }
+                val msg = "Server returned ${response.code()} ${response.message()}${if (!errorBody.isNullOrBlank()) " — $errorBody" else ""}"
+                Log.e(TAG, "syncState failed: $msg")
+                _syncError.value = msg
+                Result.failure(Exception(msg))
             }
         } catch (e: Exception) {
+            val msg = "${e.javaClass.simpleName}: ${e.message ?: "Could not reach https://chat.aacreativeemb.com — check internet connection"}"
+            Log.e(TAG, "syncState exception", e)
+            _syncError.value = msg
             Result.failure(e)
         } finally {
             _isRefreshing.value = false
