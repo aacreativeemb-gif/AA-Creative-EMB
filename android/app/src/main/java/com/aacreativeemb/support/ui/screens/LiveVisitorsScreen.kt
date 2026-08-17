@@ -157,6 +157,12 @@ fun VisitorCard(
                             color = Slate400,
                             fontSize = 11.sp
                         )
+                        Text(
+                            text = "Arrived: ${formatArrivalTime(visitor.firstSeenAt)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Slate500,
+                            fontSize = 11.sp
+                        )
                     }
                 }
 
@@ -227,5 +233,34 @@ fun VisitorCard(
                 }
             }
         }
+    }
+}
+
+/**
+ * Formats the server's ISO-8601 "firstSeenAt" timestamp (e.g.
+ * "2026-08-17T04:15:36.123Z") into a short, readable date + time such as
+ * "17 Aug, 04:15 AM", shown in the device's local timezone -- matching the
+ * "Arrived At" column on the web Live Visitor Tracking page.
+ */
+private fun formatArrivalTime(iso: String?): String {
+    if (iso.isNullOrBlank()) return "Just now"
+    return try {
+        val cleaned = iso.trim().removeSuffix("Z")
+        val parsedDate = try {
+            java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS", java.util.Locale.US)
+                .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+                .parse(cleaned)
+        } catch (e: Exception) {
+            java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+                .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+                .parse(cleaned)
+        }
+        if (parsedDate == null) {
+            "Just now"
+        } else {
+            java.text.SimpleDateFormat("dd MMM, hh:mm a", java.util.Locale.US).format(parsedDate)
+        }
+    } catch (e: Exception) {
+        "Just now"
     }
 }
