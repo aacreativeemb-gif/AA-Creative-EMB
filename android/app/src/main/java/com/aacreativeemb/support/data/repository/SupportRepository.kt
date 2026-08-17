@@ -5,6 +5,7 @@ import android.util.Log
 import com.aacreativeemb.support.data.api.ApiClient
 import com.aacreativeemb.support.data.local.*
 import com.aacreativeemb.support.data.model.*
+import com.aacreativeemb.support.util.SoundPlayer
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -16,10 +17,20 @@ private const val TAG = "SupportRepository"
 
 class SupportRepository(context: Context) {
 
+    private val appContext = context.applicationContext
     private val api = ApiClient.getInstance(context)
     private val db = AppDatabase.getInstance(context)
     private val prefs = PreferencesManager(context)
     private val gson = Gson()
+
+    // Tracks what we already knew as of the last successful poll, so we can
+    // detect NEW events (a visitor who just came online, a conversation
+    // whose unread count just went up) instead of re-triggering the ding on
+    // every single 6-second poll for the same visitor/message.
+    private var knownOnlineVisitorIds: Set<String> = emptySet()
+    private var knownUnreadByConversation: Map<String, Int> = emptyMap()
+    private var hasSyncedOnce = false
+
 
     private val _currentState = MutableStateFlow<StateResponse?>(null)
     val currentState = _currentState.asStateFlow()
@@ -53,6 +64,25 @@ class SupportRepository(context: Context) {
                 val state = response.body()!!
                 _currentState.value = state
                 _syncError.value = null
+
+                // --- Live "ding" sound, same trigger logic as the web dashboard ---
+                if (hasSyncedOnce) {
+                    val nowOnlineIds = state.visitors.filter { it.status == "online" }.map { it.id }.toSet()
+                    val newlyOnlineVisitor = (nowOnlineIds - knownOnlineVisitorIds).isNotEmpty()
+
+                    val newUnreadMessage = state.conversations.any { c ->
+                        val prevUnread = knownUnreadByConversation[c.id] ?: 0
+                        c.unreadCountAgent > prevUnread
+                    }
+
+                    if (newlyOnlineVisitor || newUnreadMessage) {
+                        SoundPlayer.playDing(appContext)
+                    }
+                }
+                hasSyncedOnce = true
+                knownOnlineVisitorIds = state.visitors.filter { it.status == "online" }.map { it.id }.toSet()
+                knownUnreadByConversation = state.conversations.associate { it.id to it.unreadCountAgent }
+                // --- end ding logic ---
 
                 // Cache in Room DB
                 val visitorMap = state.visitors.associateBy { it.id }
