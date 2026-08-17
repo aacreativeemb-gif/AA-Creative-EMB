@@ -108,6 +108,12 @@ class SyncWorker(
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            val audioAttributes = android.media.AudioAttributes.Builder()
+                .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION)
+                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 context.getString(R.string.notification_channel_name),
@@ -116,6 +122,13 @@ class SyncWorker(
                 description = context.getString(R.string.notification_channel_desc)
                 enableLights(true)
                 enableVibration(true)
+                // On Android 8+ (Oreo), a notification's sound is only
+                // honoured if it's set HERE on the channel -- calling
+                // .setSound() on the individual Notification.Builder below
+                // is silently ignored once a channel exists. Setting it
+                // explicitly here (instead of relying on the OS default)
+                // guarantees the ding plays consistently across devices.
+                setSound(soundUri, audioAttributes)
             }
             notificationManager.createNotificationChannel(channel)
         }
