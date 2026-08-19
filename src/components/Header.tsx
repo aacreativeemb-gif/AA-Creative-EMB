@@ -1,22 +1,13 @@
 import React, { useState } from 'react';
 import {
   MessageSquare,
-  Bot,
-  Users,
-  Ticket,
-  Sliders,
-  BarChart3,
-  BookOpen,
   Code2,
-  Mail,
-  Zap,
-  ShieldCheck,
   Building2,
-  Sparkles,
   LogOut,
   Volume2,
   VolumeX,
-  Bell
+  Bell,
+  Menu
 } from 'lucide-react';
 import { Property, User } from '../types';
 import { soundFx } from '../utils/audio';
@@ -29,14 +20,11 @@ interface HeaderProps {
   users: User[];
   onSelectUser: (u: User) => void;
   onUpdateUserStatus?: (userId: string, status: 'online' | 'away' | 'offline') => void;
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
   onOpenEmbedModal: () => void;
   isAudioMuted?: boolean;
   onToggleAudioMute?: () => void;
-  unreadCount: number;
-  openTicketsCount: number;
   onLogout?: () => void;
+  onOpenMobileMenu?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -47,38 +35,33 @@ export const Header: React.FC<HeaderProps> = ({
   users,
   onSelectUser,
   onUpdateUserStatus,
-  activeTab,
-  setActiveTab,
   onOpenEmbedModal,
   isAudioMuted = false,
   onToggleAudioMute,
-  unreadCount,
-  openTicketsCount,
-  onLogout
+  onLogout,
+  onOpenMobileMenu
 }) => {
-  const navItems = [
-    { id: 'widget_testbench', label: 'Visitor Widget Preview', icon: MessageSquare, badge: null },
-    { id: 'unified_inbox', label: 'Admin Chat', icon: Mail, badge: unreadCount > 0 ? unreadCount : null },
-    { id: 'visitor_tracker', label: 'Live Visitor Tracking', icon: Users, badge: 'Live' },
-    { id: 'ai_admin', label: 'AI Support Agent & KB', icon: Bot, highlight: true },
-    { id: 'ticketing', label: 'Tickets & SLA', icon: Ticket, badge: openTicketsCount > 0 ? openTicketsCount : null },
-    { id: 'integrations', label: 'Gmail & WhatsApp', icon: Zap },
-    { id: 'automations', label: 'Triggers', icon: Sliders },
-    { id: 'knowledge_base', label: 'Knowledge Base', icon: BookOpen },
-    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
-    { id: 'settings', label: 'Settings', icon: ShieldCheck }
-  ];
-
   return (
-    <header className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-40 shadow-md">
+    <header className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-40 shadow-md shrink-0">
       {/* Top Bar: Property & Role controls */}
-      <div className="max-w-7xl mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-sm">
+      <div className="px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-sm">
         <div className="flex items-center gap-3">
+          {/* Mobile hamburger to open the nav drawer */}
+          {onOpenMobileMenu && (
+            <button
+              onClick={onOpenMobileMenu}
+              className="md:hidden text-slate-300 hover:text-white p-1.5 -ml-1.5 rounded-md hover:bg-slate-800"
+              title="Open menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+          )}
           <div className="flex items-center gap-2 font-bold text-lg text-blue-400">
             <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-inner">
               <MessageSquare className="w-5 h-5" />
             </div>
-            <span>AA Creative Embroidery AI Platform</span>
+            <span className="hidden sm:inline">AA Creative Embroidery AI Platform</span>
+            <span className="sm:hidden">AA Creative EMB</span>
           </div>
 
           <div className="hidden md:flex items-center gap-2 pl-4 border-l border-slate-800">
@@ -200,40 +183,6 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
         </div>
-      </div>
-
-      {/* Navigation tabs */}
-      <div className="max-w-7xl mx-auto px-4 flex items-center gap-1 overflow-x-auto scrollbar-none border-t border-slate-800/80 pt-1">
-        {navItems.map(item => {
-          const Icon = item.icon;
-          const isActive = activeTab === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={`flex items-center gap-2 px-3 py-2 text-xs font-medium rounded-t-md transition whitespace-nowrap relative border-b-2 ${
-                isActive
-                  ? 'border-blue-500 bg-slate-800/80 text-white'
-                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
-              } ${item.highlight ? 'text-blue-300 font-semibold' : ''}`}
-            >
-              <Icon className={`w-3.5 h-3.5 ${item.highlight ? 'text-blue-400' : ''}`} />
-              <span>{item.label}</span>
-              {item.highlight && <Sparkles className="w-3 h-3 text-amber-400 animate-spin" />}
-              {item.badge !== null && item.badge !== undefined && (
-                <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                    typeof item.badge === 'number'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                  }`}
-                >
-                  {item.badge}
-                </span>
-              )}
-            </button>
-          );
-        })}
       </div>
     </header>
   );

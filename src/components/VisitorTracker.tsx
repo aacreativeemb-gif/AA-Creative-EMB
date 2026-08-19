@@ -21,14 +21,19 @@ interface VisitorTrackerProps {
   conversations?: Conversation[];
   onStartChatWithVisitor: (visitor: Visitor) => void;
   onCloseChat?: (visitorId: string) => void;
+  /** 'live' = today's visitors only (default). 'history' = up to 3 months of past visitors. */
+  variant?: 'live' | 'history';
 }
 
 export const VisitorTracker: React.FC<VisitorTrackerProps> = ({
   visitors,
   conversations = [],
   onStartChatWithVisitor,
-  onCloseChat
+  onCloseChat,
+  variant = 'live'
 }) => {
+  const isHistory = variant === 'history';
+  const uniqueCountries = new Set(visitors.map(v => v.location?.country).filter(Boolean)).size;
   const [closingId, setClosingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -78,24 +83,38 @@ export const VisitorTracker: React.FC<VisitorTrackerProps> = ({
       )}
 
       {/* Overview Stats Header */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-wrap items-center justify-between gap-4">
+      <div className="bg-white border border-slate-200 rounded-xl p-4 md:p-5 shadow-xs flex flex-wrap items-center justify-between gap-4">
         <div>
-          <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 uppercase tracking-wider">
-            Live Real-time Tracker
+          <span
+            className={`text-xs font-semibold px-2.5 py-1 rounded-full border uppercase tracking-wider ${
+              isHistory
+                ? 'text-blue-600 bg-blue-50 border-blue-200'
+                : 'text-emerald-600 bg-emerald-50 border-emerald-200'
+            }`}
+          >
+            {isHistory ? '3-Month Visitor History' : 'Live Real-time Tracker'}
           </span>
-          <h2 className="text-xl font-bold text-slate-800 mt-2">Active Website Visitors</h2>
+          <h2 className="text-lg md:text-xl font-bold text-slate-800 mt-2">
+            {isHistory ? 'Past Website Visitors' : "Today's Website Visitors"}
+          </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Monitor incoming website traffic, current active pages, country origin, and initiate or close proactive support chats.
+            {isHistory
+              ? 'Browse every visitor who arrived on the site over the last 3 months.'
+              : "Monitor today's incoming website traffic, current active pages, country origin, and initiate or close proactive support chats."}
           </p>
         </div>
 
-        <div className="flex items-center gap-4 text-center">
-          <div className="bg-slate-50 px-4 py-2 rounded-xl border border-slate-200">
-            <span className="text-2xl font-black text-emerald-600">{visitors.filter(v => v.status === 'online').length}</span>
-            <p className="text-[11px] text-slate-500 font-medium">Online Visitors</p>
+        <div className="flex items-center gap-3 md:gap-4 text-center">
+          <div className="bg-slate-50 px-3.5 md:px-4 py-2 rounded-xl border border-slate-200">
+            <span className="text-xl md:text-2xl font-black text-emerald-600">
+              {isHistory ? visitors.length : visitors.filter(v => v.status === 'online').length}
+            </span>
+            <p className="text-[11px] text-slate-500 font-medium">
+              {isHistory ? 'Total Visitors' : 'Online Visitors'}
+            </p>
           </div>
-          <div className="bg-slate-50 px-4 py-2 rounded-xl border border-slate-200">
-            <span className="text-2xl font-black text-blue-600">3</span>
+          <div className="bg-slate-50 px-3.5 md:px-4 py-2 rounded-xl border border-slate-200">
+            <span className="text-xl md:text-2xl font-black text-blue-600">{uniqueCountries}</span>
             <p className="text-[11px] text-slate-500 font-medium">Countries</p>
           </div>
         </div>
@@ -106,13 +125,28 @@ export const VisitorTracker: React.FC<VisitorTrackerProps> = ({
         <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
           <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
             <Users className="w-4 h-4 text-blue-600" />
-            Live Visitor Session Stream
+            {isHistory ? 'Visitor History Log' : "Today's Visitor Session Stream"}
           </h3>
-          <span className="text-xs text-slate-500 font-medium">Auto-refresh active</span>
+          <span className="text-xs text-slate-500 font-medium">
+            {isHistory ? `Last 3 months · ${visitors.length} visitor${visitors.length === 1 ? '' : 's'}` : 'Auto-refresh active'}
+          </span>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
+        {visitors.length === 0 && (
+          <div className="py-14 text-center px-4">
+            <Users className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+            <p className="text-sm font-semibold text-slate-500">
+              {isHistory ? 'No visitor history in the last 3 months yet.' : 'No visitors on the site today yet.'}
+            </p>
+            <p className="text-xs text-slate-400 mt-1">
+              {isHistory ? 'New visitor sessions will appear here as they happen.' : 'New visitors arriving today will show up here automatically.'}
+            </p>
+          </div>
+        )}
+
+        {visitors.length > 0 && (
+        <div className="overflow-x-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+          <table className="w-full min-w-[860px] text-left text-xs border-collapse">
             <thead>
               <tr className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
                 <th className="p-3">Visitor Name & Info</th>
@@ -211,15 +245,17 @@ export const VisitorTracker: React.FC<VisitorTrackerProps> = ({
                           <span>{activeConv ? 'Open Chat' : 'Start Chat'}</span>
                         </button>
 
-                        <button
-                          onClick={() => handleClose(vis)}
-                          disabled={closingId === vis.id}
-                          className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 px-2.5 py-1.5 rounded-lg font-semibold text-xs inline-flex items-center gap-1 transition disabled:opacity-50"
-                          title="Close / End live chat session"
-                        >
-                          <XCircle className="w-3.5 h-3.5 text-rose-600" />
-                          <span>{closingId === vis.id ? 'Closing...' : 'Close Chat'}</span>
-                        </button>
+                        {!isHistory && (
+                          <button
+                            onClick={() => handleClose(vis)}
+                            disabled={closingId === vis.id}
+                            className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 px-2.5 py-1.5 rounded-lg font-semibold text-xs inline-flex items-center gap-1 transition disabled:opacity-50"
+                            title="Close / End live chat session"
+                          >
+                            <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                            <span>{closingId === vis.id ? 'Closing...' : 'Close Chat'}</span>
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -228,6 +264,7 @@ export const VisitorTracker: React.FC<VisitorTrackerProps> = ({
             </tbody>
           </table>
         </div>
+        )}
       </div>
     </div>
   );
