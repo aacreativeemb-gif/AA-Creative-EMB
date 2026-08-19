@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Header } from './components/Header';
+import { Sidebar } from './components/Sidebar';
 import { VisitorWidget } from './components/VisitorWidget';
 import { UnifiedInbox } from './components/UnifiedInbox';
 import { VisitorTracker } from './components/VisitorTracker';
@@ -68,6 +69,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<string>('widget_testbench');
   const [showEmbedModal, setShowEmbedModal] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Sound Notification & Real-time Live Visitor Alert State
   const prevVisitorCountRef = useRef<number | null>(null);
@@ -94,6 +96,8 @@ export default function App() {
   const hasLoadedMessagesOnceRef = useRef(false);
   const currentUserRef = useRef<User | null>(null);
   currentUserRef.current = currentUser;
+  const selectedPropertyRef = useRef<Property | null>(null);
+  selectedPropertyRef.current = selectedProperty;
 
   // Fetch full state from backend Express server
   const fetchState = async () => {
@@ -102,13 +106,27 @@ export default function App() {
       const data = await res.json();
 
       setProperties(data.properties || []);
-      if (!selectedProperty && data.properties?.length > 0) {
+      if (!selectedPropertyRef.current && data.properties?.length > 0) {
         setSelectedProperty(data.properties[0]);
       }
 
       setUsers(data.users || []);
-      if (!currentUser && data.users?.length > 0) {
-        setCurrentUser(data.users[0]);
+      // Keep the logged-in / selected agent's data (esp. online/away/offline
+      // status) in sync with the backend on every poll, instead of only
+      // setting it once — otherwise a status change or manually switching to
+      // a non-default agent gets silently reverted back to the first agent
+      // on the very next 4s refresh.
+      if (data.users?.length > 0) {
+        const cu = currentUserRef.current;
+        if (cu) {
+          const fresh = data.users.find((u: User) => u.id === cu.id);
+          if (fresh) {
+            setCurrentUser(fresh);
+            localStorage.setItem('aa_admin_user', JSON.stringify(fresh));
+          }
+        } else {
+          setCurrentUser(data.users[0]);
+        }
       }
 
       setDepartments(data.departments || []);
@@ -415,15 +433,42 @@ export default function App() {
   const openTicketsCount = tickets.filter(t => t.status !== 'resolved' && t.status !== 'closed').length;
   const onlineAgentCount = users.filter(u => u.status === 'online').length;
 
+  // --- Live Visitor Tracking (today only) vs Visitor History (last 3 months) ---
+  const isSameLocalDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+  const now = new Date();
+  const threeMonthsAgo = new Date();
+  threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+
+  const visitorArrival = (v: Visitor) => new Date(v.sessionStartedAt || v.firstSeenAt || v.lastActiveAt || 0);
+
+  const todaysVisitors = visitors
+    .filter(v => {
+      const d = visitorArrival(v);
+      return !isNaN(d.getTime()) && isSameLocalDay(d, now);
+    })
+    .sort((a, b) => visitorArrival(b).getTime() - visitorArrival(a).getTime());
+
+  const historyVisitors = visitors
+    .filter(v => {
+      const d = visitorArrival(v);
+      return !isNaN(d.getTime()) && d >= threeMonthsAgo && d <= now;
+    })
+    .sort((a, b) => visitorArrival(b).getTime() - visitorArrival(a).getTime());
+
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-800 flex flex-col font-sans">
+    <div className="h-screen bg-slate-100 text-slate-800 flex flex-col font-sans overflow-hidden">
       <Header
         properties={properties}
         selectedProperty={selectedProperty}
         onSelectProperty={p => setSelectedProperty(p)}
         currentUser={currentUser}
         users={users}
-        onSelectUser={u => setCurrentUser(u)}
+        onSelectUser={u => {
+          setCurrentUser(u);
+          localStorage.setItem('aa_admin_user', JSON.stringify(u));
+        }}
         onUpdateUserStatus={async (userId, status) => {
           try {
             const res = await fetch('/api/users/status', {
@@ -433,19 +478,20 @@ export default function App() {
             });
             const data = await res.json();
             if (data.success) {
+              if (data.user && currentUserRef.current?.id === userId) {
+                setCurrentUser(data.user);
+                localStorage.setItem('aa_admin_user', JSON.stringify(data.user));
+              }
               fetchState();
             }
           } catch (err) {
             console.error('Failed to update status:', err);
           }
         }}
-        activeTab={activeTab}
-        setActiveTab={tab => setActiveTab(tab)}
         onOpenEmbedModal={() => setShowEmbedModal(true)}
         isAudioMuted={isAudioMuted}
         onToggleAudioMute={toggleAudioMute}
-        unreadCount={unreadCount}
-        openTicketsCount={openTicketsCount}
+        onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
         onLogout={() => {
           localStorage.removeItem('aa_admin_token');
           localStorage.removeItem('aa_admin_user');
@@ -454,7 +500,17 @@ export default function App() {
         }}
       />
 
-      <main className="flex-1">
+      <div className="flex flex-1 min-h-0">
+        <Sidebar
+          activeTab={activeTab}
+          setActiveTab={tab => setActiveTab(tab)}
+          unreadCount={unreadCount}
+          openTicketsCount={openTicketsCount}
+          isOpen={isMobileMenuOpen}
+          onClose={() => setIsMobileMenuOpen(false)}
+        />
+
+      <main className="flex-1 min-w-0 overflow-y-auto">
         {activeTab === 'widget_testbench' && (
           <VisitorWidget
             property={selectedProperty}
@@ -499,8 +555,23 @@ export default function App() {
 
         {activeTab === 'visitor_tracker' && (
           <VisitorTracker
-            visitors={visitors}
+            visitors={todaysVisitors}
             conversations={conversations}
+            variant="live"
+            onStartChatWithVisitor={vis => {
+              const conv = conversations.find(c => c.visitorId === vis.id);
+              if (conv) setActiveConversationId(conv.id);
+              setActiveTab('unified_inbox');
+            }}
+            onCloseChat={handleCloseChat}
+          />
+        )}
+
+        {activeTab === 'visitor_history' && (
+          <VisitorTracker
+            visitors={historyVisitors}
+            conversations={conversations}
+            variant="history"
             onStartChatWithVisitor={vis => {
               const conv = conversations.find(c => c.visitorId === vis.id);
               if (conv) setActiveConversationId(conv.id);
@@ -581,6 +652,7 @@ export default function App() {
           />
         )}
       </main>
+      </div>
 
       {/* Floating Live Visitor Sound & Arrival Notification Toast */}
       {liveToast && (
