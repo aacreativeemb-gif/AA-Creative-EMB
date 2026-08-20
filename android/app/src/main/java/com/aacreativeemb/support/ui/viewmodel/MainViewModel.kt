@@ -169,6 +169,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
+     * Update a ticket's status (Open / In Progress / Resolved / Closed)
+     */
+    fun updateTicketStatus(ticket: Ticket, status: String) {
+        viewModelScope.launch {
+            repository.saveTicket(ticket.copy(status = status))
+        }
+    }
+
+    /**
      * Logout
      */
     fun logout(onComplete: () -> Unit) {
