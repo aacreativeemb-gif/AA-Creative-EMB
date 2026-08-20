@@ -35,6 +35,15 @@ export const TicketingView: React.FC<TicketingViewProps> = ({
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<'low' | 'normal' | 'high' | 'urgent'>('high');
 
+  const statusTabs: { value: 'open' | 'in_progress' | 'resolved' | 'closed'; label: string }[] = [
+    { value: 'open', label: 'Open' },
+    { value: 'in_progress', label: 'In Progress' },
+    { value: 'resolved', label: 'Resolved' },
+    { value: 'closed', label: 'Closed' }
+  ];
+  const [activeStatusTab, setActiveStatusTab] = useState<'open' | 'in_progress' | 'resolved' | 'closed'>('open');
+  const filteredTickets = tickets.filter(t => t.status === activeStatusTab);
+
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!subject.trim()) return;
@@ -87,9 +96,44 @@ export const TicketingView: React.FC<TicketingViewProps> = ({
         </button>
       </div>
 
+      {/* Status Filter Tabs: Open / In Progress / Resolved / Closed */}
+      <div className="bg-white border border-slate-200 rounded-xl p-1.5 shadow-xs flex flex-wrap items-center gap-1.5">
+        {statusTabs.map(tab => {
+          const count = tickets.filter(t => t.status === tab.value).length;
+          const isActive = activeStatusTab === tab.value;
+          return (
+            <button
+              key={tab.value}
+              onClick={() => setActiveStatusTab(tab.value)}
+              className={`flex-1 min-w-[110px] text-xs font-bold px-3 py-2 rounded-lg transition flex items-center justify-center gap-1.5 ${
+                isActive
+                  ? 'bg-blue-600 text-white shadow'
+                  : 'text-slate-500 hover:bg-slate-100'
+              }`}
+            >
+              <span>{tab.label}</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                  isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
+                }`}
+              >
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* Ticket List Cards */}
+      {filteredTickets.length === 0 ? (
+        <div className="bg-white border border-slate-200 rounded-xl py-14 text-center px-4 shadow-xs">
+          <TicketIcon className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+          <p className="text-sm font-semibold text-slate-500">No {statusTabs.find(t => t.value === activeStatusTab)?.label} tickets</p>
+          <p className="text-xs text-slate-400 mt-1">Tickets moved to this status will show up here.</p>
+        </div>
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {tickets.map(tkt => (
+        {filteredTickets.map(tkt => (
           <div key={tkt.id} className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-3">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <div className="flex items-center gap-2">
@@ -103,6 +147,8 @@ export const TicketingView: React.FC<TicketingViewProps> = ({
                   ? 'bg-amber-100 text-amber-800'
                   : tkt.status === 'resolved'
                   ? 'bg-emerald-100 text-emerald-800'
+                  : tkt.status === 'closed'
+                  ? 'bg-slate-200 text-slate-700'
                   : 'bg-blue-100 text-blue-800'
               }`}>
                 {tkt.status.replace('_', ' ')}
@@ -142,7 +188,6 @@ export const TicketingView: React.FC<TicketingViewProps> = ({
               >
                 <option value="open">Open</option>
                 <option value="in_progress">In Progress</option>
-                <option value="pending">Pending</option>
                 <option value="resolved">Resolved</option>
                 <option value="closed">Closed</option>
               </select>
@@ -150,6 +195,7 @@ export const TicketingView: React.FC<TicketingViewProps> = ({
           </div>
         ))}
       </div>
+      )}
 
       {/* New Ticket Modal */}
       {showModal && (
