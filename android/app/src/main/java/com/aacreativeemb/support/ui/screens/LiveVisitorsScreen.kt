@@ -23,15 +23,38 @@ import com.aacreativeemb.support.data.local.VisitorEntity
 import com.aacreativeemb.support.ui.theme.*
 import com.aacreativeemb.support.ui.viewmodel.MainViewModel
 
+enum class VisitorViewMode { LIVE_TODAY, HISTORY_3MO }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LiveVisitorsScreen(
     mainViewModel: MainViewModel,
     onStartChatWithVisitor: (conversationId: String) -> Unit
 ) {
-    val visitors by mainViewModel.visitors.collectAsState(initial = emptyList())
+    val allVisitors by mainViewModel.visitors.collectAsState(initial = emptyList())
     val conversations by mainViewModel.conversations.collectAsState(initial = emptyList())
     val isRefreshing by mainViewModel.isRefreshing.collectAsState()
+
+    var viewMode by remember { mutableStateOf(VisitorViewMode.LIVE_TODAY) }
+
+    // "Live" = visitors who arrived today only. "History" = arrivals within
+    // the last 3 months. Mirrors the same split on the web admin dashboard.
+    val visitors = remember(allVisitors, viewMode) {
+        val now = java.util.Calendar.getInstance()
+        when (viewMode) {
+            VisitorViewMode.LIVE_TODAY -> allVisitors.filter { v ->
+                val d = parseIsoDate(v.sessionStartedAt ?: v.firstSeenAt)
+                d != null && isSameLocalDay(d, now.time)
+            }
+            VisitorViewMode.HISTORY_3MO -> {
+                val cutoff = java.util.Calendar.getInstance().apply { add(java.util.Calendar.MONTH, -3) }.time
+                allVisitors.filter { v ->
+                    val d = parseIsoDate(v.sessionStartedAt ?: v.firstSeenAt)
+                    d != null && d >= cutoff
+                }
+            }
+        }.sortedByDescending { parseIsoDate(it.sessionStartedAt ?: it.firstSeenAt)?.time ?: 0L }
+    }
 
     val onlineCount = remember(visitors) { visitors.count { it.status == "online" } }
 
@@ -44,7 +67,7 @@ fun LiveVisitorsScreen(
             title = {
                 Column {
                     Text(
-                        text = "Live Visitors Tracking",
+                        text = if (viewMode == VisitorViewMode.LIVE_TODAY) "Live Visitors Tracking" else "Visitor History",
                         style = MaterialTheme.typography.titleMedium,
                         color = White,
                         fontWeight = FontWeight.Bold
@@ -54,12 +77,15 @@ fun LiveVisitorsScreen(
                             modifier = Modifier
                                 .size(8.dp)
                                 .clip(CircleShape)
-                                .background(Emerald500)
+                                .background(if (viewMode == VisitorViewMode.LIVE_TODAY) Emerald500 else Sky400)
                         )
                         Text(
-                            text = "$onlineCount visitor(s) actively browsing website",
+                            text = if (viewMode == VisitorViewMode.LIVE_TODAY)
+                                "$onlineCount visitor(s) actively browsing website"
+                            else
+                                "${visitors.size} visitor(s) in the last 3 months",
                             style = MaterialTheme.typography.bodySmall,
-                            color = Emerald500,
+                            color = if (viewMode == VisitorViewMode.LIVE_TODAY) Emerald500 else Sky400,
                             fontSize = 11.sp
                         )
                     }
@@ -77,6 +103,25 @@ fun LiveVisitorsScreen(
             colors = TopAppBarDefaults.topAppBarColors(containerColor = Navy900)
         )
 
+        // Live Today / 3-Month History toggle
+        TabRow(
+            selectedTabIndex = viewMode.ordinal,
+            containerColor = Navy900,
+            contentColor = Sky400,
+            divider = {}
+        ) {
+            Tab(
+                selected = viewMode == VisitorViewMode.LIVE_TODAY,
+                onClick = { viewMode = VisitorViewMode.LIVE_TODAY },
+                text = { Text("Live (Today)", fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
+            )
+            Tab(
+                selected = viewMode == VisitorViewMode.HISTORY_3MO,
+                onClick = { viewMode = VisitorViewMode.HISTORY_3MO },
+                text = { Text("History (3mo)", fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
+            )
+        }
+
         if (visitors.isEmpty()) {
             Box(
                 modifier = Modifier
@@ -86,12 +131,15 @@ fun LiveVisitorsScreen(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "No Live Visitors Right Now",
+                        text = if (viewMode == VisitorViewMode.LIVE_TODAY) "No Visitors Today Yet" else "No Visitor History Yet",
                         style = MaterialTheme.typography.titleMedium,
                         color = Slate300
                     )
                     Text(
-                        text = "As customers browse aacreativeemb.com, their live location and browsing page will appear here.",
+                        text = if (viewMode == VisitorViewMode.LIVE_TODAY)
+                            "As customers browse aacreativeemb.com today, their live location and browsing page will appear here."
+                        else
+                            "Visitor sessions from the last 3 months will appear here as they happen.",
                         style = MaterialTheme.typography.bodySmall,
                         color = Slate500,
                         modifier = Modifier.padding(top = 4.dp)
@@ -237,16 +285,15 @@ fun VisitorCard(
 }
 
 /**
- * Formats the server's ISO-8601 "firstSeenAt" timestamp (e.g.
- * "2026-08-17T04:15:36.123Z") into a short, readable date + time such as
- * "17 Aug, 04:15 AM", shown in the device's local timezone -- matching the
- * "Arrived At" column on the web Live Visitor Tracking page.
+ * Parses the server's ISO-8601 timestamp strings (e.g.
+ * "2026-08-17T04:15:36.123Z") into a java.util.Date in UTC, used both for
+ * display formatting and for the Live (today) / History (3mo) date filters.
  */
-private fun formatArrivalTime(iso: String?): String {
-    if (iso.isNullOrBlank()) return "Just now"
+private fun parseIsoDate(iso: String?): java.util.Date? {
+    if (iso.isNullOrBlank()) return null
     return try {
         val cleaned = iso.trim().removeSuffix("Z")
-        val parsedDate = try {
+        try {
             java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS", java.util.Locale.US)
                 .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
                 .parse(cleaned)
@@ -255,11 +302,29 @@ private fun formatArrivalTime(iso: String?): String {
                 .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
                 .parse(cleaned)
         }
-        if (parsedDate == null) {
-            "Just now"
-        } else {
-            java.text.SimpleDateFormat("dd MMM, hh:mm a", java.util.Locale.US).format(parsedDate)
-        }
+    } catch (e: Exception) {
+        null
+    }
+}
+
+/** True when two dates fall on the same calendar day in the device's local timezone. */
+private fun isSameLocalDay(a: java.util.Date, b: java.util.Date): Boolean {
+    val calA = java.util.Calendar.getInstance().apply { time = a }
+    val calB = java.util.Calendar.getInstance().apply { time = b }
+    return calA.get(java.util.Calendar.YEAR) == calB.get(java.util.Calendar.YEAR) &&
+        calA.get(java.util.Calendar.DAY_OF_YEAR) == calB.get(java.util.Calendar.DAY_OF_YEAR)
+}
+
+/**
+ * Formats the server's ISO-8601 "firstSeenAt" timestamp (e.g.
+ * "2026-08-17T04:15:36.123Z") into a short, readable date + time such as
+ * "17 Aug, 04:15 AM", shown in the device's local timezone -- matching the
+ * "Arrived At" column on the web Live Visitor Tracking page.
+ */
+private fun formatArrivalTime(iso: String?): String {
+    val parsedDate = parseIsoDate(iso) ?: return "Just now"
+    return try {
+        java.text.SimpleDateFormat("dd MMM, hh:mm a", java.util.Locale.US).format(parsedDate)
     } catch (e: Exception) {
         "Just now"
     }

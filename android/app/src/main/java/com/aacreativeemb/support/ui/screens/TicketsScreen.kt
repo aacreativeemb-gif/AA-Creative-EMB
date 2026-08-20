@@ -1,24 +1,47 @@
 package com.aacreativeemb.support.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aacreativeemb.support.data.model.Ticket
 import com.aacreativeemb.support.ui.theme.*
 import com.aacreativeemb.support.ui.viewmodel.MainViewModel
+
+/** The 4 supported ticket lifecycle states, shown as filter tabs on this screen. */
+enum class TicketStatusFilter(val label: String, val value: String) {
+    OPEN("Open", "open"),
+    IN_PROGRESS("In Progress", "in_progress"),
+    RESOLVED("Resolved", "resolved"),
+    CLOSED("Closed", "closed")
+}
+
+private fun ticketStatusLabel(status: String): String =
+    TicketStatusFilter.entries.find { it.value == status }?.label
+        ?: status.replace('_', ' ').replaceFirstChar { it.uppercase() }
+
+private fun ticketStatusColor(status: String): Color = when (status) {
+    "open" -> Sky400
+    "in_progress" -> Amber500
+    "resolved" -> Emerald500
+    "closed" -> Slate400
+    else -> Slate400
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -27,9 +50,14 @@ fun TicketsScreen(
 ) {
     val state by mainViewModel.currentState.collectAsState()
     val isRefreshing by mainViewModel.isRefreshing.collectAsState()
-    val tickets = remember(state) { state?.tickets ?: emptyList() }
+    val allTickets = remember(state) { state?.tickets ?: emptyList() }
 
     var showCreateDialog by remember { mutableStateOf(false) }
+    var selectedFilter by remember { mutableStateOf(TicketStatusFilter.OPEN) }
+
+    val filteredTickets = remember(allTickets, selectedFilter) {
+        allTickets.filter { it.status == selectedFilter.value }
+    }
 
     Column(
         modifier = Modifier
@@ -39,7 +67,7 @@ fun TicketsScreen(
         TopAppBar(
             title = {
                 Text(
-                    text = "Support Tickets (${tickets.size})",
+                    text = "Support Tickets (${allTickets.size})",
                     style = MaterialTheme.typography.titleMedium,
                     color = White,
                     fontWeight = FontWeight.Bold
@@ -60,7 +88,31 @@ fun TicketsScreen(
             colors = TopAppBarDefaults.topAppBarColors(containerColor = Navy900)
         )
 
-        if (tickets.isEmpty()) {
+        // Open / In Progress / Resolved / Closed filter tabs
+        ScrollableTabRow(
+            selectedTabIndex = selectedFilter.ordinal,
+            containerColor = Navy900,
+            contentColor = Sky400,
+            edgePadding = 12.dp,
+            divider = {}
+        ) {
+            TicketStatusFilter.entries.forEach { filter ->
+                val count = allTickets.count { it.status == filter.value }
+                Tab(
+                    selected = selectedFilter == filter,
+                    onClick = { selectedFilter = filter },
+                    text = {
+                        Text(
+                            text = "${filter.label} ($count)",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                )
+            }
+        }
+
+        if (filteredTickets.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -69,7 +121,7 @@ fun TicketsScreen(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "No Tickets Found",
+                        text = "No ${selectedFilter.label} Tickets",
                         style = MaterialTheme.typography.titleMedium,
                         color = Slate300
                     )
@@ -87,8 +139,13 @@ fun TicketsScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(tickets, key = { it.id }) { ticket ->
-                    TicketCard(ticket = ticket)
+                items(filteredTickets, key = { it.id }) { ticket ->
+                    TicketCard(
+                        ticket = ticket,
+                        onStatusChange = { newStatus ->
+                            mainViewModel.updateTicketStatus(ticket, newStatus)
+                        }
+                    )
                 }
             }
         }
@@ -107,7 +164,7 @@ fun TicketsScreen(
 }
 
 @Composable
-fun TicketCard(ticket: Ticket) {
+fun TicketCard(ticket: Ticket, onStatusChange: (String) -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
@@ -187,16 +244,57 @@ fun TicketCard(ticket: Ticket) {
                     text = "Customer: $customerLabel",
                     color = Slate500,
                     style = MaterialTheme.typography.bodySmall,
-                    fontSize = 11.sp
+                    fontSize = 11.sp,
+                    modifier = Modifier.weight(1f)
                 )
 
-                Text(
-                    text = "Status: ${ticket.status.replaceFirstChar { it.uppercase() }}",
-                    color = if (ticket.status == "open") Emerald500 else Slate400,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+                // Tap to change status: Open / In Progress / Resolved / Closed
+                var menuExpanded by remember { mutableStateOf(false) }
+                Box {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(ticketStatusColor(ticket.status).copy(alpha = 0.15f))
+                            .clickable { menuExpanded = true }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = ticketStatusLabel(ticket.status),
+                            color = ticketStatusColor(ticket.status),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Icon(
+                            Icons.Default.ArrowDropDown,
+                            contentDescription = "Change status",
+                            tint = ticketStatusColor(ticket.status),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false }
+                    ) {
+                        TicketStatusFilter.entries.forEach { filter ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = filter.label,
+                                        color = if (filter.value == ticket.status) ticketStatusColor(filter.value) else Slate900,
+                                        fontWeight = if (filter.value == ticket.status) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                onClick = {
+                                    menuExpanded = false
+                                    if (filter.value != ticket.status) onStatusChange(filter.value)
+                                }
+                            )
+                        }
+                    }
+                }
             }
         }
     }
