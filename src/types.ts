@@ -1,7 +1,7 @@
 export type ChannelType = 'website' | 'gmail' | 'whatsapp' | 'ticket';
 export type PriorityType = 'low' | 'normal' | 'high' | 'urgent';
 export type ConversationStatus = 'queue' | 'open' | 'pending' | 'escalated' | 'resolved' | 'closed';
-export type TicketStatus = 'open' | 'in_progress' | 'pending' | 'resolved' | 'closed';
+export type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
 export type UserRole = 'superadmin' | 'admin' | 'supervisor' | 'agent' | 'viewer';
 export type AgentStatus = 'online' | 'away' | 'offline';
 export type AiMode = 'ai_first' | 'human_first' | 'ai_only' | 'human_only' | 'outside_hours_only';
