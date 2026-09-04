@@ -126,303 +126,19 @@ export class AppStore {
     }
   ];
 
-  visitors: Visitor[] = [
-    {
-      id: 'vis_101',
-      propertyId: 'prop_1',
-      name: 'Oliver Davies',
-      email: 'oliver.davies@londonthreads.co.uk',
-      phone: '+44 20 7946 0912',
-      ip: '185.125.190.45',
-      location: { country: 'United Kingdom', city: 'London', flag: '🇬🇧' },
-      browser: 'Chrome 122',
-      os: 'macOS Sonoma',
-      device: 'Desktop',
-      currentUrl: 'https://aacreativeemb.com/cap-digitizing',
-      landingPage: 'https://aacreativeemb.com/',
-      referrer: 'Google Search UK',
-      visitsCount: 3,
-      pagesViewed: 6,
-      timeOnSiteSeconds: 340,
-      status: 'offline',
-      lastActiveAt: new Date(Date.now() - 130 * 24 * 3600000).toISOString(),
-      firstSeenAt: new Date(Date.now() - 130 * 24 * 3600000).toISOString(),
-      sessionStartedAt: new Date(Date.now() - 130 * 24 * 3600000).toISOString(),
-      tags: ['UK Apparel', '3D Puff Cap', 'Rush Delivery'],
-      notes: ['London apparel decorator requesting 3D puff cap logo digitizing with 2-hour rush delivery.']
-    },
-    {
-      id: 'vis_102',
-      propertyId: 'prop_1',
-      name: 'Emma Harrison',
-      email: 'emma@birminghamworkwear.co.uk',
-      phone: '+44 121 496 0188',
-      ip: '212.58.244.70',
-      location: { country: 'United Kingdom', city: 'Birmingham', flag: '🇬🇧' },
-      browser: 'Safari 17',
-      os: 'macOS Sonoma',
-      device: 'Desktop',
-      currentUrl: 'https://aacreativeemb.com/patch-digitizing',
-      landingPage: 'https://aacreativeemb.com/',
-      referrer: 'Direct',
-      visitsCount: 5,
-      pagesViewed: 8,
-      timeOnSiteSeconds: 520,
-      status: 'offline',
-      lastActiveAt: new Date(Date.now() - 125 * 24 * 3600000).toISOString(),
-      firstSeenAt: new Date(Date.now() - 125 * 24 * 3600000).toISOString(),
-      sessionStartedAt: new Date(Date.now() - 125 * 24 * 3600000).toISOString(),
-      tags: ['UK Workwear', 'Bulk Digitizing', 'VIP Client'],
-      notes: ['Requires 40 jacket back embroidery digitizing designs weekly. Requested UK VAT invoice.']
-    },
-    {
-      id: 'vis_103',
-      propertyId: 'prop_1',
-      name: 'Harry Wright',
-      email: 'harry@manchestersports.co.uk',
-      phone: '+44 161 496 0234',
-      ip: '81.149.12.98',
-      location: { country: 'United Kingdom', city: 'Manchester', flag: '🇬🇧' },
-      browser: 'Edge 121',
-      os: 'Windows 11',
-      device: 'Desktop',
-      currentUrl: 'https://aacreativeemb.com/vector-art-conversion',
-      landingPage: 'https://aacreativeemb.com/',
-      referrer: 'WhatsApp Support',
-      visitsCount: 2,
-      pagesViewed: 4,
-      timeOnSiteSeconds: 180,
-      status: 'offline',
-      lastActiveAt: new Date(Date.now() - 140 * 24 * 3600000).toISOString(),
-      firstSeenAt: new Date(Date.now() - 140 * 24 * 3600000).toISOString(),
-      sessionStartedAt: new Date(Date.now() - 140 * 24 * 3600000).toISOString(),
-      tags: ['Vector Conversion', 'UK Client'],
-      notes: ['Sent low-res PNG logo for vector redraw in EPS/AI format for Manchester sports shop.']
-    }
-  ];
+  // NOTE: This platform ships with NO demo/sample visitors, conversations,
+  // messages or tickets. Everything here starts empty and fills up only with
+  // real customer activity (website chat, Gmail, WhatsApp). This is
+  // deliberate: fake seed records ("Oliver Davies", "Emma Harrison",
+  // "Birmingham Workwear Ltd", etc.) used to reappear on every restart,
+  // which was confusing and looked like real customer data.
+  visitors: Visitor[] = [];
 
-  conversations: Conversation[] = [
-    {
-      id: 'conv_1',
-      propertyId: 'prop_1',
-      visitorId: 'vis_101',
-      channel: 'website',
-      departmentId: 'dept_digitizing',
-      assignedAgentId: 'user_agent_1',
-      isAiHandling: false,
-      status: 'escalated',
-      priority: 'urgent',
-      subject: 'Cap Logo 3D Puff Digitizing - Express Delivery (London, UK)',
-      lastMessageText: 'Hello! We need a cap logo digitized with 3D puff for Tajima machines in London. What are your rates and how fast can we get the DST file?',
-      lastMessageAt: new Date(Date.now() - 60000).toISOString(),
-      unreadCountAgent: 1,
-      unreadCountVisitor: 0,
-      sourceDetail: 'Website Live Chat (London, UK 🇬🇧)',
-      queuePosition: 1,
-      aiSummary: {
-        sentiment: 'positive',
-        summary: 'UK client Oliver asked for 3D puff cap digitizing price and Tajima DST delivery timeframe. AI quoted £4-£8 ($5-$10) and 2-4 hr express delivery, then connected to senior digitizer.',
-        extractedIntent: 'Cap 3D Puff Digitizing Inquiry',
-        confidenceScore: 95,
-        recommendedAction: 'Ask customer to upload logo artwork file and confirm cap frame size (2.25 inch height).',
-        escalationReason: 'Customer requested human digitizer for rush order confirmation.',
-        extractedDetails: {
-          productName: '3D Puff Cap Digitizing',
-          contactPreferred: 'Live Chat / Email'
-        }
-      }
-    },
-    {
-      id: 'conv_2',
-      propertyId: 'prop_1',
-      visitorId: 'vis_102',
-      channel: 'gmail',
-      departmentId: 'dept_support',
-      assignedAgentId: null,
-      isAiHandling: true,
-      status: 'open',
-      priority: 'high',
-      subject: 'UK Corporate Workwear - Weekly Bulk Digitizing Account Inquiry',
-      lastMessageText: 'Hi AA Creative Emb team, we manage a custom embroidery and workwear shop in Birmingham, UK. We need 30-50 logo designs digitized weekly. Do you supply Wilcom EMB source files?',
-      lastMessageAt: new Date(Date.now() - 300000).toISOString(),
-      unreadCountAgent: 1,
-      unreadCountVisitor: 0,
-      sourceDetail: 'Gmail API (aacreativeemb@gmail.com)',
-      aiSummary: {
-        sentiment: 'positive',
-        summary: 'Birmingham workwear owner requesting bulk digitizing trade account (30-50 designs/week) with Wilcom EMB source files included.',
-        extractedIntent: 'Bulk Digitizing Trade Account & Pricing',
-        confidenceScore: 94,
-        recommendedAction: 'Offer £4 flat rate ($5) for bulk account and attach sample EMB/DST digitizing proof.'
-      }
-    },
-    {
-      id: 'conv_3',
-      propertyId: 'prop_1',
-      visitorId: 'vis_103',
-      channel: 'whatsapp',
-      departmentId: 'dept_vector',
-      assignedAgentId: 'user_admin_1',
-      isAiHandling: true,
-      status: 'open',
-      priority: 'normal',
-      subject: 'Vector Redraw Request for Manchester Sports Apparel',
-      lastMessageText: 'Good afternoon! How much do you charge to convert a low-res PNG into a vector file for printing?',
-      lastMessageAt: new Date(Date.now() - 600000).toISOString(),
-      unreadCountAgent: 0,
-      unreadCountVisitor: 0,
-      sourceDetail: 'WhatsApp Business (+44 161 496 0234)'
-    }
-  ];
+  conversations: Conversation[] = [];
 
-  messages: Record<string, Message[]> = {
-    conv_1: [
-      {
-        id: 'msg_101',
-        conversationId: 'conv_1',
-        senderType: 'visitor',
-        senderId: 'vis_101',
-        senderName: 'Oliver Davies',
-        text: 'Hello! We need a cap logo digitized with 3D puff for Tajima machines in London. What are your rates and how fast can we get the DST file?',
-        timestamp: new Date(Date.now() - 300000).toISOString(),
-        deliveryStatus: 'read',
-        channel: 'website',
-        languageDetected: 'English',
-        translatedRomanUrdu: 'Hello! Humey London me Tajima machines k liye 3D puff cap logo digitize karwana hai. Aap ke rates kya hain aur DST file kitni jaldi mil sakti hai?'
-      },
-      {
-        id: 'msg_102',
-        conversationId: 'conv_1',
-        senderType: 'ai',
-        senderId: 'ai_assistant',
-        senderName: 'AA Creative Digitizing AI',
-        text: 'Hello Oliver! Welcome to AA Creative Embroidery UK (aacreativeemb.com). Our standard rate for cap 3D puff digitizing is £4 to £8 ($5-$10) with 2 to 4 hour express delivery. We provide Tajima DST, Brother PES, and Wilcom EMB source files with a full PDF stitch-out proof sheet! Feel free to attach your artwork image.',
-        timestamp: new Date(Date.now() - 280000).toISOString(),
-        deliveryStatus: 'read',
-        channel: 'website',
-        confidenceScore: 96
-      },
-      {
-        id: 'msg_103',
-        conversationId: 'conv_1',
-        senderType: 'visitor',
-        senderId: 'vis_101',
-        senderName: 'Oliver Davies',
-        text: 'Brilliant! We have a tight deadline today. Can I speak to a digitizer agent to confirm the frame size?',
-        timestamp: new Date(Date.now() - 60000).toISOString(),
-        deliveryStatus: 'delivered',
-        channel: 'website',
-        isEscalationTrigger: true,
-        languageDetected: 'English',
-        translatedRomanUrdu: 'Zabardast! Aaj hamara deadline bohat tight hai. Kya main frame size confirm karne k liye senior digitizer agent se baat kar sakta hoon?'
-      },
-      {
-        id: 'msg_104',
-        conversationId: 'conv_1',
-        senderType: 'system',
-        senderId: 'system',
-        senderName: 'System Handoff',
-        text: '⚡ Smart Escalation Triggered: Customer requested senior digitizer agent. Conversation transferred to James Wilson (Senior Digitizer) with AI summary.',
-        timestamp: new Date(Date.now() - 50000).toISOString(),
-        deliveryStatus: 'delivered',
-        channel: 'website'
-      }
-    ],
-    conv_2: [
-      {
-        id: 'msg_201',
-        conversationId: 'conv_2',
-        senderType: 'visitor',
-        senderId: 'vis_102',
-        senderName: 'Emma Harrison',
-        text: 'Hi AA Creative Emb team, we manage a custom embroidery and workwear shop in Birmingham, UK. We need 30-50 logo designs digitized weekly. Do you supply Wilcom EMB source files?',
-        timestamp: new Date(Date.now() - 300000).toISOString(),
-        deliveryStatus: 'delivered',
-        channel: 'gmail',
-        translatedRomanUrdu: 'Hi AA Creative Emb team, hum Birmingham UK me custom embroidery aur workwear shop manage karte hain. Humey weekly 30-50 logos digitize karwane hain. Kya aap Wilcom EMB source file bhi dete hain?'
-      },
-      {
-        id: 'msg_202',
-        conversationId: 'conv_2',
-        senderType: 'ai',
-        senderId: 'ai_assistant',
-        senderName: 'AA Creative Digitizing AI',
-        text: 'Hello Emma! Thank you for contacting AA Creative Embroidery UK (aacreativeemb.com). Yes! We provide full Wilcom EMB source files, DST, PES, EXP, and PDF color sequence sheets with every order. For a volume of 30-50 designs per week, we offer an exclusive UK trade account rate of £4 flat ($5) per left-chest/cap logo with 100% free minor revisions and a 2-6 hour delivery turnaround.',
-        timestamp: new Date(Date.now() - 250000).toISOString(),
-        deliveryStatus: 'delivered',
-        channel: 'gmail',
-        confidenceScore: 95
-      }
-    ],
-    conv_3: [
-      {
-        id: 'msg_301',
-        conversationId: 'conv_3',
-        senderType: 'visitor',
-        senderId: 'vis_103',
-        senderName: 'Harry Wright',
-        text: 'Good afternoon! How much do you charge to convert a low-res PNG into a vector file for printing?',
-        timestamp: new Date(Date.now() - 600000).toISOString(),
-        deliveryStatus: 'delivered',
-        channel: 'whatsapp'
-      },
-      {
-        id: 'msg_302',
-        conversationId: 'conv_3',
-        senderType: 'ai',
-        senderId: 'ai_assistant',
-        senderName: 'AA Creative Digitizing AI',
-        text: 'Good afternoon Harry! Our vector art conversion rate is £4 to £8 ($5-$10). You will receive print-ready AI, EPS, SVG, and High-Res PDF files within 2 to 4 hours. Send over your image or email aacreativeemb@gmail.com and we will prepare a proof sample right away!',
-        timestamp: new Date(Date.now() - 580000).toISOString(),
-        deliveryStatus: 'delivered',
-        channel: 'whatsapp',
-        confidenceScore: 98
-      }
-    ]
-  };
+  messages: Record<string, Message[]> = {};
 
-  tickets: Ticket[] = [
-    {
-      id: 'tkt_1001',
-      ticketNumber: 'TKT-1001',
-      conversationId: 'conv_1',
-      visitorId: 'vis_101',
-      visitorName: 'Oliver Davies',
-      visitorEmail: 'oliver.davies@londonthreads.co.uk',
-      subject: 'Urgent 3D Puff Cap Digitizing Order - Order #AAC-8821 (London, UK)',
-      description: 'Customer requested 2-hour rush digitizing delivery for 3D puff cap logo in Tajima DST format for London embroidery workshop.',
-      priority: 'urgent',
-      status: 'in_progress',
-      departmentId: 'dept_digitizing',
-      assignedAgentId: 'user_agent_1',
-      createdAt: new Date(Date.now() - 3600000).toISOString(),
-      updatedAt: new Date().toISOString(),
-      slaDueDate: new Date(Date.now() + 7200000).toISOString(),
-      slaBreached: false,
-      source: 'website',
-      tags: ['Cap Digitizing', '3D Puff', 'Rush Order', 'DST', 'London UK']
-    },
-    {
-      id: 'tkt_1002',
-      ticketNumber: 'TKT-1002',
-      conversationId: 'conv_2',
-      visitorId: 'vis_102',
-      visitorName: 'Emma Harrison',
-      visitorEmail: 'emma@birminghamworkwear.co.uk',
-      subject: 'Birmingham Workwear Ltd - UK Bulk Digitizing Trade Account Setup',
-      description: 'UK commercial client inquiry for 30-50 weekly digitizing designs with Wilcom EMB source files and monthly invoicing.',
-      priority: 'high',
-      status: 'open',
-      departmentId: 'dept_support',
-      assignedAgentId: undefined,
-      createdAt: new Date(Date.now() - 7200000).toISOString(),
-      updatedAt: new Date(Date.now() - 3600000).toISOString(),
-      slaDueDate: new Date(Date.now() + 14400000).toISOString(),
-      slaBreached: false,
-      source: 'gmail',
-      tags: ['UK Client', 'Bulk Account', 'Custom Invoice', 'Birmingham']
-    }
-  ];
+  tickets: Ticket[] = [];
 
   kbCategories: KbCategory[] = [
     { id: 'cat_digitizing', name: 'Embroidery Digitizing & Formats', description: 'DST, PES, EMB, EXP file formats and machine settings', icon: 'Scissors' },
@@ -583,28 +299,9 @@ A: Type "agent", "human digitizer", WhatsApp (+44 7462 23 8732) or email us at a
     fallbackEmail: 'admin@aacreativeemb.com'
   };
 
-  qcFeedbacks: AiQcFeedback[] = [
-    {
-      id: 'qc_1',
-      conversationId: 'conv_1',
-      messageId: 'msg_102',
-      query: 'Hello! We need a cap logo digitized with 3D puff for Tajima machines in London. What are your rates and how fast can we get the DST file?',
-      aiResponse: 'Hello Oliver! Welcome to AA Creative Embroidery UK (aacreativeemb.com). Our standard rate for cap 3D puff digitizing is £4 to £8 ($5-$10) with 2 to 4 hour express delivery...',
-      rating: 'good',
-      notes: 'Handled UK 3D puff digitizing inquiry with precise pricing, file format details, and turnaround times.',
-      timestamp: new Date(Date.now() - 280000).toISOString()
-    }
-  ];
+  qcFeedbacks: AiQcFeedback[] = [];
 
-  unansweredQuestions: UnansweredQuestion[] = [
-    {
-      id: 'uq_1',
-      query: 'Do you digitize specialized Chenille embroidery patches for UK school varsity jackets?',
-      count: 5,
-      lastAskedAt: new Date(Date.now() - 43200000).toISOString(),
-      status: 'pending'
-    }
-  ];
+  unansweredQuestions: UnansweredQuestion[] = [];
 
   triggers: TriggerRule[] = [
     {
@@ -689,22 +386,22 @@ A: Type "agent", "human digitizer", WhatsApp (+44 7462 23 8732) or email us at a
   };
 
   analytics: PlatformAnalytics = {
-    totalChats: 184,
-    answeredChats: 180,
-    missedChats: 4,
-    aiResolvedCount: 142,
-    humanHandoffCount: 38,
-    avgResponseTimeSeconds: 8,
-    avgResolutionTimeMinutes: 3.2,
-    csatPercentage: 98,
-    activeVisitorsCount: 16,
-    openTicketsCount: 2,
+    totalChats: 0,
+    answeredChats: 0,
+    missedChats: 0,
+    aiResolvedCount: 0,
+    humanHandoffCount: 0,
+    avgResponseTimeSeconds: 0,
+    avgResolutionTimeMinutes: 0,
+    csatPercentage: 0,
+    activeVisitorsCount: 0,
+    openTicketsCount: 0,
     slaBreachedCount: 0,
     channelBreakdown: {
-      website: 112,
-      gmail: 42,
-      whatsapp: 26,
-      ticket: 4
+      website: 0,
+      gmail: 0,
+      whatsapp: 0,
+      ticket: 0
     }
   };
 
@@ -779,9 +476,61 @@ A: Type "agent", "human digitizer", WhatsApp (+44 7462 23 8732) or email us at a
         }
       }
       console.log('Store hydrated from data/db.json');
+      this.purgeLegacyDemoData();
     } catch (err) {
       console.error('Failed to hydrate store (starting fresh):', err);
     }
+  }
+
+  // ---------- One-time cleanup ----------
+  // Older deployments of this app persisted sample/demo records (fake
+  // visitors like "Oliver Davies" / "Emma Harrison", their conversations,
+  // and tickets TKT-1001 / TKT-1002) straight into data/db.json. Once saved,
+  // those kept coming back on every restart even after the seed data was
+  // removed from the code, because hydrate() loads whatever is on disk.
+  // This strips out those specific legacy demo IDs (by ID, never touching
+  // any real customer data) the first time the app boots with the fix.
+  private purgeLegacyDemoData() {
+    const legacyVisitorIds = new Set(['vis_101', 'vis_102', 'vis_103']);
+    const legacyConversationIds = new Set(['conv_1', 'conv_2', 'conv_3']);
+    const legacyTicketIds = new Set(['tkt_1001', 'tkt_1002']);
+
+    const hadLegacyData =
+      this.visitors.some(v => legacyVisitorIds.has(v.id)) ||
+      this.conversations.some(c => legacyConversationIds.has(c.id)) ||
+      this.tickets.some(t => legacyTicketIds.has(t.id));
+
+    if (!hadLegacyData) return;
+
+    this.visitors = this.visitors.filter(v => !legacyVisitorIds.has(v.id));
+    this.conversations = this.conversations.filter(c => !legacyConversationIds.has(c.id));
+    this.tickets = this.tickets.filter(t => !legacyTicketIds.has(t.id));
+    for (const convId of legacyConversationIds) {
+      delete this.messages[convId];
+    }
+    this.qcFeedbacks = this.qcFeedbacks.filter(q => !legacyConversationIds.has(q.conversationId));
+    this.analytics.openTicketsCount = this.tickets.filter(t => t.status === 'open').length;
+
+    console.log('Removed legacy demo data (Oliver Davies / Emma Harrison / Harry Wright sample records) from data/db.json');
+    this.persist();
+  }
+
+  // ---------- Admin actions ----------
+  // Wipes every conversation + message thread (website / Gmail / WhatsApp)
+  // so the Admin Chat inbox starts clean. Visitors, tickets, and business
+  // settings are left untouched — this only clears chat history.
+  clearAllChatHistory() {
+    this.conversations = [];
+    this.messages = {};
+    this.qcFeedbacks = [];
+    this.unansweredQuestions = [];
+    this.analytics.totalChats = 0;
+    this.analytics.answeredChats = 0;
+    this.analytics.missedChats = 0;
+    this.analytics.aiResolvedCount = 0;
+    this.analytics.humanHandoffCount = 0;
+    this.analytics.channelBreakdown = { website: 0, gmail: 0, whatsapp: 0, ticket: this.analytics.channelBreakdown.ticket };
+    this.persist();
   }
 }
 
