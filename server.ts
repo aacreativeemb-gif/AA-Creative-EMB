@@ -1228,6 +1228,28 @@ async function startServer() {
     res.json({ success: true, conversation: conv });
   });
 
+  // Permanently delete a single conversation + its message thread.
+  app.delete('/api/conversations/:id', (req, res) => {
+    const { id } = req.params;
+    const exists = globalStore.conversations.some(c => c.id === id);
+    if (!exists) {
+      return res.status(404).json({ success: false, error: 'Conversation not found' });
+    }
+    globalStore.conversations = globalStore.conversations.filter(c => c.id !== id);
+    delete globalStore.messages[id];
+    globalStore.qcFeedbacks = globalStore.qcFeedbacks.filter(q => q.conversationId !== id);
+    globalStore.persist();
+    res.json({ success: true });
+  });
+
+  // Wipe the entire Admin Chat inbox (all website / Gmail / WhatsApp
+  // conversations and messages). Visitors, tickets, and business/AI
+  // settings are left untouched.
+  app.post('/api/admin/clear-chat-history', (req, res) => {
+    globalStore.clearAllChatHistory();
+    res.json({ success: true });
+  });
+
   // Create / Update ticket
   app.post('/api/tickets', (req, res) => {
     const { id, conversationId, visitorId, visitorName, visitorEmail, subject, description, priority, departmentId, assignedAgentId, tags } = req.body;
@@ -1289,6 +1311,19 @@ async function startServer() {
     });
 
     res.json({ success: true, ticket: newTicket });
+  });
+
+  // Permanently delete a single ticket (e.g. a stray/duplicate ticket).
+  app.delete('/api/tickets/:id', (req, res) => {
+    const { id } = req.params;
+    const exists = globalStore.tickets.some(t => t.id === id);
+    if (!exists) {
+      return res.status(404).json({ success: false, error: 'Ticket not found' });
+    }
+    globalStore.tickets = globalStore.tickets.filter(t => t.id !== id);
+    globalStore.analytics.openTicketsCount = globalStore.tickets.filter(t => t.status === 'open').length;
+    globalStore.persist();
+    res.json({ success: true });
   });
 
   // User / Agent Status Update Endpoint
