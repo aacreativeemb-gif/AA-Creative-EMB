@@ -9,7 +9,8 @@ import {
   Tag,
   Search,
   Filter,
-  ShieldAlert
+  ShieldAlert,
+  Trash2
 } from 'lucide-react';
 import { Ticket, User as UserType, Department } from '../types';
 
@@ -19,6 +20,7 @@ interface TicketingViewProps {
   departments: Department[];
   onCreateTicket: (ticket: Partial<Ticket>) => void;
   onUpdateTicketStatus: (id: string, status: any) => void;
+  onDeleteTicket?: (id: string) => void;
 }
 
 export const TicketingView: React.FC<TicketingViewProps> = ({
@@ -26,7 +28,8 @@ export const TicketingView: React.FC<TicketingViewProps> = ({
   agents,
   departments,
   onCreateTicket,
-  onUpdateTicketStatus
+  onUpdateTicketStatus,
+  onDeleteTicket
 }) => {
   const [showModal, setShowModal] = useState(false);
   const [subject, setSubject] = useState('');
@@ -164,6 +167,13 @@ export const TicketingView: React.FC<TicketingViewProps> = ({
                 <span className="font-semibold text-slate-800">{tkt.visitorName} ({tkt.visitorEmail})</span>
               </div>
               <div className="flex justify-between">
+                <span>Created:</span>
+                <span className="font-semibold text-slate-800">
+                  {new Date(tkt.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}{' '}
+                  {new Date(tkt.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+              <div className="flex justify-between">
                 <span>SLA Due Date:</span>
                 <span className="font-semibold text-emerald-700 flex items-center gap-1">
                   <Clock className="w-3 h-3" />
@@ -181,16 +191,33 @@ export const TicketingView: React.FC<TicketingViewProps> = ({
                 ))}
               </div>
 
-              <select
-                value={tkt.status}
-                onChange={e => onUpdateTicketStatus(tkt.id, e.target.value)}
-                className="text-xs bg-white border border-slate-300 rounded-md px-2 py-1 font-semibold text-slate-700 outline-none"
-              >
-                <option value="open">Open</option>
-                <option value="in_progress">In Progress</option>
-                <option value="resolved">Resolved</option>
-                <option value="closed">Closed</option>
-              </select>
+              <div className="flex items-center gap-1.5">
+                <select
+                  value={tkt.status}
+                  onChange={e => onUpdateTicketStatus(tkt.id, e.target.value)}
+                  className="text-xs bg-white border border-slate-300 rounded-md px-2 py-1 font-semibold text-slate-700 outline-none"
+                >
+                  <option value="open">Open</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="resolved">Resolved</option>
+                  <option value="closed">Closed</option>
+                </select>
+
+                {onDeleteTicket && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm(`Permanently delete ticket ${tkt.ticketNumber}? This cannot be undone.`)) {
+                        onDeleteTicket(tkt.id);
+                      }
+                    }}
+                    title="Permanently delete this ticket"
+                    className="p-1.5 rounded-md border border-slate-200 text-slate-400 hover:text-rose-700 hover:bg-rose-50 hover:border-rose-200 transition"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         ))}

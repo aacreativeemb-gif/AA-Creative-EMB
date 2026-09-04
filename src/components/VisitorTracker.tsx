@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Users,
   Globe,
@@ -12,7 +12,9 @@ import {
   ShieldCheck,
   Zap,
   XCircle,
-  CheckCircle2
+  CheckCircle2,
+  CalendarDays,
+  RotateCcw
 } from 'lucide-react';
 import { Visitor, Conversation } from '../types';
 
@@ -33,9 +35,50 @@ export const VisitorTracker: React.FC<VisitorTrackerProps> = ({
   variant = 'live'
 }) => {
   const isHistory = variant === 'history';
-  const uniqueCountries = new Set(visitors.map(v => v.location?.country).filter(Boolean)).size;
   const [closingId, setClosingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  // --- History calendar: pick any past day to browse (defaults to a
+  // rolling 48-hour window on the current date) ---
+  const toDateInputValue = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+  const todayInputValue = toDateInputValue(new Date());
+  const [selectedDate, setSelectedDate] = useState<string>(''); // '' = default rolling 48h view
+
+  const visitorArrival = (v: Visitor) => new Date(v.sessionStartedAt || v.firstSeenAt || v.lastActiveAt || 0);
+
+  const displayedVisitors = useMemo(() => {
+    if (!isHistory) return visitors;
+    if (!selectedDate) {
+      // Default: current date's history, rolling last 48 hours.
+      const cutoff = Date.now() - 48 * 3600000;
+      return visitors.filter(v => {
+        const t = visitorArrival(v).getTime();
+        return !isNaN(t) && t >= cutoff;
+      });
+    }
+    // A specific calendar day was picked: show only that day's visitors.
+    return visitors.filter(v => {
+      const d = visitorArrival(v);
+      return !isNaN(d.getTime()) && toDateInputValue(d) === selectedDate;
+    });
+  }, [visitors, isHistory, selectedDate]);
+
+  const uniqueCountries = new Set(displayedVisitors.map(v => v.location?.country).filter(Boolean)).size;
+
+  // Earliest date we have any history for, used as the date-picker's min bound.
+  const minHistoryDate = useMemo(() => {
+    if (visitors.length === 0) return todayInputValue;
+    const earliest = visitors.reduce((min, v) => {
+      const t = visitorArrival(v).getTime();
+      return !isNaN(t) && t < min ? t : min;
+    }, Date.now());
+    return toDateInputValue(new Date(earliest));
+  }, [visitors]);
 
   const formatArrival = (iso?: string) => {
     if (!iso) return { date: '—', time: '—' };
@@ -99,7 +142,7 @@ export const VisitorTracker: React.FC<VisitorTrackerProps> = ({
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
             {isHistory
-              ? 'Browse every visitor who arrived on the site over the last 3 months.'
+              ? "Shows today's visitors (last 48 hours) by default — use the calendar below to browse any earlier date, up to the last 3 months."
               : "Monitor today's incoming website traffic, current active pages, country origin, and initiate or close proactive support chats."}
           </p>
         </div>
@@ -107,10 +150,10 @@ export const VisitorTracker: React.FC<VisitorTrackerProps> = ({
         <div className="flex items-center gap-3 md:gap-4 text-center">
           <div className="bg-slate-50 px-3.5 md:px-4 py-2 rounded-xl border border-slate-200">
             <span className="text-xl md:text-2xl font-black text-emerald-600">
-              {isHistory ? visitors.length : visitors.filter(v => v.status === 'online').length}
+              {isHistory ? displayedVisitors.length : displayedVisitors.filter(v => v.status === 'online').length}
             </span>
             <p className="text-[11px] text-slate-500 font-medium">
-              {isHistory ? 'Total Visitors' : 'Online Visitors'}
+              {isHistory ? 'Visitors Shown' : 'Online Visitors'}
             </p>
           </div>
           <div className="bg-slate-50 px-3.5 md:px-4 py-2 rounded-xl border border-slate-200">
@@ -120,6 +163,34 @@ export const VisitorTracker: React.FC<VisitorTrackerProps> = ({
         </div>
       </div>
 
+      {/* History Calendar: pick any day, defaults to a rolling 48h view of today */}
+      {isHistory && (
+        <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-xs flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1.5 text-slate-500 text-xs font-semibold">
+            <CalendarDays className="w-4 h-4 text-blue-600" />
+            <span>{selectedDate ? 'Viewing history for:' : 'Viewing: current date (last 48 hours)'}</span>
+          </div>
+          <input
+            type="date"
+            value={selectedDate || todayInputValue}
+            min={minHistoryDate}
+            max={todayInputValue}
+            onChange={e => setSelectedDate(e.target.value)}
+            className="text-xs border border-slate-300 rounded-lg px-2.5 py-1.5 outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          {selectedDate && (
+            <button
+              type="button"
+              onClick={() => setSelectedDate('')}
+              className="flex items-center gap-1 text-[11px] font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2.5 py-1.5 rounded-lg transition"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Back to today (48h)
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Visitor Table */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
         <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
@@ -128,23 +199,25 @@ export const VisitorTracker: React.FC<VisitorTrackerProps> = ({
             {isHistory ? 'Visitor History Log' : "Today's Visitor Session Stream"}
           </h3>
           <span className="text-xs text-slate-500 font-medium">
-            {isHistory ? `Last 3 months · ${visitors.length} visitor${visitors.length === 1 ? '' : 's'}` : 'Auto-refresh active'}
+            {isHistory
+              ? `${selectedDate ? new Date(selectedDate + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : 'Last 48 hours'} · ${displayedVisitors.length} visitor${displayedVisitors.length === 1 ? '' : 's'}`
+              : 'Auto-refresh active'}
           </span>
         </div>
 
-        {visitors.length === 0 && (
+        {displayedVisitors.length === 0 && (
           <div className="py-14 text-center px-4">
             <Users className="w-8 h-8 text-slate-300 mx-auto mb-2" />
             <p className="text-sm font-semibold text-slate-500">
-              {isHistory ? 'No visitor history in the last 3 months yet.' : 'No visitors on the site today yet.'}
+              {isHistory ? 'No visitor history for this period yet.' : 'No visitors on the site today yet.'}
             </p>
             <p className="text-xs text-slate-400 mt-1">
-              {isHistory ? 'New visitor sessions will appear here as they happen.' : 'New visitors arriving today will show up here automatically.'}
+              {isHistory ? 'Pick another date above, or check back as new visitor sessions happen.' : 'New visitors arriving today will show up here automatically.'}
             </p>
           </div>
         )}
 
-        {visitors.length > 0 && (
+        {displayedVisitors.length > 0 && (
         <div className="overflow-x-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
           <table className="w-full min-w-[860px] text-left text-xs border-collapse">
             <thead>
@@ -159,7 +232,7 @@ export const VisitorTracker: React.FC<VisitorTrackerProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
-              {visitors.map(vis => {
+              {displayedVisitors.map(vis => {
                 const activeConv = conversations.find(c => c.visitorId === vis.id && c.status !== 'resolved');
                 return (
                   <tr key={vis.id} className="hover:bg-slate-50 transition">
