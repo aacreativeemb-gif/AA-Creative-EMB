@@ -550,6 +550,18 @@ export default function App() {
                 body: JSON.stringify({ conversationId: activeConversation?.id, agentId })
               }).then(() => fetchState());
             }}
+            onDeleteConversation={id => {
+              fetch(`/api/conversations/${id}`, { method: 'DELETE' }).then(() => {
+                if (activeConversationId === id) setActiveConversationId('');
+                fetchState();
+              });
+            }}
+            onClearAllChatHistory={() => {
+              fetch('/api/admin/clear-chat-history', { method: 'POST' }).then(() => {
+                setActiveConversationId('');
+                fetchState();
+              });
+            }}
           />
         )}
 
@@ -602,6 +614,9 @@ export default function App() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id, status })
               }).then(() => fetchState());
+            }}
+            onDeleteTicket={id => {
+              fetch(`/api/tickets/${id}`, { method: 'DELETE' }).then(() => fetchState());
             }}
           />
         )}
