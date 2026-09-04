@@ -21,7 +21,8 @@ import {
   Headphones,
   Paperclip,
   MoreVertical,
-  ChevronRight
+  ChevronRight,
+  Trash2
 } from 'lucide-react';
 import { Conversation, Message, Visitor, CannedResponse, User as UserType } from '../types';
 
@@ -37,6 +38,8 @@ interface UnifiedInboxProps {
   onToggleAi: (isAiHandling: boolean) => void;
   onChangeStatus: (status: any, priority?: any) => void;
   onAssignAgent: (agentId: string) => void;
+  onDeleteConversation?: (id: string) => void;
+  onClearAllChatHistory?: () => void;
 }
 
 export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({
@@ -50,7 +53,9 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({
   onSendMessage,
   onToggleAi,
   onChangeStatus,
-  onAssignAgent
+  onAssignAgent,
+  onDeleteConversation,
+  onClearAllChatHistory
 }) => {
   const [filterChannel, setFilterChannel] = useState<'live' | 'all' | 'website' | 'gmail' | 'whatsapp' | 'ticket'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -60,6 +65,12 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [polishNotice, setPolishNotice] = useState<string | null>(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+
+  const handleClearAll = () => {
+    if (onClearAllChatHistory) onClearAllChatHistory();
+    setShowClearConfirm(false);
+  };
 
   const activeVisitor = visitors.find(v => v.id === activeConversation?.visitorId);
 
@@ -145,16 +156,53 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({
         
         {/* Search & Channel Filter */}
         <div className="p-3 border-b border-slate-200 space-y-2.5 bg-slate-50">
-          <div className="relative">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search conversations, emails, WhatsApp..."
-              className="w-full text-xs pl-8 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg outline-none focus:ring-1 focus:ring-blue-500"
-            />
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Search conversations, emails, WhatsApp..."
+                className="w-full text-xs pl-8 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+            {onClearAllChatHistory && (
+              <button
+                type="button"
+                onClick={() => setShowClearConfirm(true)}
+                disabled={conversations.length === 0}
+                title="Permanently clear all chat history"
+                className="shrink-0 flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Clear History</span>
+              </button>
+            )}
           </div>
+
+          {/* Clear-all confirmation */}
+          {showClearConfirm && (
+            <div className="p-2.5 bg-rose-50 border border-rose-300 rounded-lg text-[11px] text-rose-900 space-y-2">
+              <p className="font-semibold">Permanently delete ALL conversations & messages (website, Gmail, WhatsApp)? This cannot be undone.</p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleClearAll}
+                  className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-bold py-1.5 rounded-md"
+                >
+                  Yes, Clear Everything
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowClearConfirm(false)}
+                  className="flex-1 bg-white border border-slate-300 text-slate-600 font-semibold py-1.5 rounded-md"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center gap-1 overflow-x-auto scrollbar-none text-xs">
             <button
@@ -299,6 +347,20 @@ export const UnifiedInbox: React.FC<UnifiedInboxProps> = ({
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
                     <span>Re-open Chat</span>
+                  </button>
+                )}
+
+                {onDeleteConversation && (
+                  <button
+                    onClick={() => {
+                      if (window.confirm('Permanently delete this conversation and its messages? This cannot be undone.')) {
+                        onDeleteConversation(activeConversation.id);
+                      }
+                    }}
+                    title="Permanently delete this conversation"
+                    className="px-2 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-700 border border-slate-200 hover:border-rose-200 transition"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 )}
               </div>
