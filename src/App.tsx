@@ -657,7 +657,15 @@ export default function App() {
         )}
 
         {activeTab === 'leads' && (
-          <LeadsView leads={visitors} />
+          <LeadsView
+            leads={visitors}
+            onDeleteLead={id => {
+              fetch(`/api/leads/${id}`, { method: 'DELETE' }).then(() => fetchState());
+            }}
+            onClearAllLeads={() => {
+              fetch('/api/admin/clear-leads', { method: 'POST' }).then(() => fetchState());
+            }}
+          />
         )}
 
         {activeTab === 'settings' && (

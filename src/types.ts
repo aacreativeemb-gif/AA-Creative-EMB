@@ -141,6 +141,12 @@ export interface Conversation {
   awaitingCloseConfirmation?: boolean;
   /** Timestamp of the last idle "anything else?" nudge sent after ~1 minute of visitor silence, so it's only sent once per silence gap (reset whenever the visitor sends a new message). */
   idleNudgeSentAt?: string;
+  /** Set when the AI wanted to escalate/open a ticket but the visitor's name, email, or phone weren't all known yet — it asked for the missing details and is holding this until they're provided, so the ticket fires automatically once contact info is complete without the customer having to re-explain the issue. */
+  pendingEscalation?: {
+    problemSummary: string;
+    orderInfo: string;
+    createdAt: string;
+  };
   /** Timestamp the conversation was closed (manually or auto-closed after 30 min visitor inactivity). */
   closedAt?: string;
   /** How the conversation ended: agent/AI resolved it, or it auto-expired from visitor inactivity. */
