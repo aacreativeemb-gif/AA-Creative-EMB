@@ -764,6 +764,7 @@ async function startServer() {
       conv.lastMessageAt = visitorMsg.timestamp;
       conv.unreadCountAgent += 1;
       conv.awaitingCloseConfirmation = false;
+      conv.idleNudgeSentAt = undefined;
 
       // Visitor confirmed they don't need anything else — close the chat here
       // (no AI/agent round-trip needed) and prompt them to rate the session.
@@ -2642,6 +2643,62 @@ async function startServer() {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
+
+  // ---------------------------------------------------------------------
+  // Idle "anything else?" nudge — humanises the closing question so it only
+  // shows up when the customer has actually gone quiet for a bit (~1 min)
+  // after the AI's last reply, instead of being tacked onto every message.
+  // ---------------------------------------------------------------------
+  const IDLE_NUDGE_MS = 60 * 1000;
+  const IDLE_NUDGE_CHECK_INTERVAL_MS = 15 * 1000;
+
+  setInterval(() => {
+    try {
+      const now = Date.now();
+      let changed = false;
+
+      for (const conv of globalStore.conversations) {
+        if (!conv.isAiHandling || conv.status !== 'open') continue;
+
+        const msgs = globalStore.messages[conv.id];
+        if (!msgs || msgs.length === 0) continue;
+
+        const lastMsg = msgs[msgs.length - 1];
+        if (lastMsg.senderType !== 'ai') continue; // we're waiting on THEM, not the other way around
+        if (conv.awaitingCloseConfirmation) continue; // already asked (naturally) and waiting for their reply
+        if (conv.idleNudgeSentAt) continue; // already nudged during this silence gap
+
+        const hasVisitorMessage = msgs.some(m => m.senderType === 'visitor');
+        if (!hasVisitorMessage) continue; // don't nudge on a plain opening greeting nobody replied to yet
+
+        const idleFor = now - new Date(lastMsg.timestamp).getTime();
+        if (idleFor < IDLE_NUDGE_MS) continue;
+
+        const nudgeTimestamp = new Date().toISOString();
+        const nudge: Message = {
+          id: `msg_${Date.now()}_idle`,
+          conversationId: conv.id,
+          senderType: 'ai',
+          senderId: 'ai_assistant',
+          senderName: globalStore.aiSettings.aiName || 'AA Creative Support Team',
+          text: 'Is there anything else I can help you with today?',
+          timestamp: nudgeTimestamp,
+          deliveryStatus: 'delivered',
+          channel: conv.channel
+        };
+        globalStore.messages[conv.id].push(nudge);
+        conv.lastMessageText = nudge.text;
+        conv.lastMessageAt = nudge.timestamp;
+        conv.awaitingCloseConfirmation = true;
+        conv.idleNudgeSentAt = nudgeTimestamp;
+        changed = true;
+      }
+
+      if (changed) globalStore.persist();
+    } catch (err) {
+      console.error('Idle nudge scheduler error:', err);
+    }
+  }, IDLE_NUDGE_CHECK_INTERVAL_MS);
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Live Support Platform server listening on http://0.0.0.0:${PORT}`);
