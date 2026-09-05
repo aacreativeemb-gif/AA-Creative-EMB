@@ -313,6 +313,22 @@ Respond STRICTLY in JSON format matching the schema provided.`;
 
   // Fallback Rule-Based Engine
   const fallbackResult = getFallbackAiResponse(userMessageText, previousMessages, visitorName, visitorEmail, visitorCountry);
+  // Not every fallback branch above returns extractedDetails (e.g. a bare
+  // "Thanks!" or a lone phone number typed in reply to "what's your number?"
+  // falls into a generic branch that doesn't extract anything). Merge in a
+  // fresh, unconditional email/phone/name scan here so contact details are
+  // NEVER silently dropped just because of which branch happened to answer.
+  const fallbackEmailMatch = userMessageText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+  const fallbackPhoneMatch = userMessageText.match(/(?:\+?\d{1,4}[\s-]?)?\(?\d{2,5}\)?[\s-]?\d{3,5}[\s-]?\d{3,5}/);
+  const fallbackNameMatch = userMessageText.match(/(?:my name is|i am|this is|i'm|name:)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)/i);
+  if (fallbackEmailMatch || fallbackPhoneMatch || fallbackNameMatch) {
+    fallbackResult.extractedDetails = {
+      ...fallbackResult.extractedDetails,
+      email: fallbackResult.extractedDetails?.email || fallbackEmailMatch?.[0],
+      phone: fallbackResult.extractedDetails?.phone || fallbackPhoneMatch?.[0],
+      name: fallbackResult.extractedDetails?.name || fallbackNameMatch?.[1]
+    };
+  }
   fallbackResult.aiResponseText = ensureClosingQuestion(fallbackResult.aiResponseText, isFirstEverMessage, fallbackResult.shouldEscalate);
   fallbackResult.isFirstEverMessage = isFirstEverMessage;
   return fallbackResult;
