@@ -106,7 +106,10 @@ export async function processCustomerMessageWithAI(
   const emailMatch = userMessageText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
   const phoneMatch = userMessageText.match(/(?:\+?\d{1,4}[\s-]?)?\(?\d{2,5}\)?[\s-]?\d{3,5}[\s-]?\d{3,5}/);
   const orderMatch = userMessageText.match(/(?:order\s*(?:#|no\.?|num\.?|number)?\s*[:=]?\s*([0-9a-zA-Z-]+))/i) || userMessageText.match(/(?:#\s*([0-9a-zA-Z-]+))/);
-  const extractedOrderNum = orderMatch ? orderMatch[1] : (userMessageText.match(/\b\d{3,7}\b/)?.[0] || undefined);
+  let extractedOrderNum = orderMatch ? orderMatch[1] : (userMessageText.match(/\b\d{3,7}\b/)?.[0] || undefined);
+  // Guard against the loose "order <word>" pattern grabbing a stray word
+  // (e.g. "order arrived") instead of an actual order number/code.
+  if (extractedOrderNum && !/\d/.test(extractedOrderNum)) extractedOrderNum = undefined;
 
   // Extract name if user states "my name is...", "i am...", "this is..."
   let extractedName: string | undefined = undefined;
@@ -133,7 +136,11 @@ export async function processCustomerMessageWithAI(
   // 2. Call Gemini model gemini-2.5-flash for intelligent conversational support & lead qualification
   if (process.env.GEMINI_API_KEY) {
     try {
-      const systemPrompt = `You are a warm, genuinely helpful customer support specialist at '${settings.businessName}' (AA Creative Embroidery UK). You talk the way a real, experienced support agent would — naturally, conversationally, and with real attentiveness to what the customer is actually asking. Avoid sounding scripted or robotic.
+      const systemPrompt = `You are a real member of the customer support team at '${settings.businessName}' (AA Creative Embroidery UK). You talk the way a real, experienced support teammate would — naturally, conversationally, and with real attentiveness to what the customer is actually asking. Avoid sounding scripted or robotic.
+
+WHO YOU ARE:
+- Think of yourself as a human teammate on the support desk, not as software. Never refer to yourself as an "AI", "bot", "chatbot", "assistant", "language model", or similar in your replies — just talk like a helpful person on the team.
+- If someone directly and sincerely asks whether they're talking to a real person, don't make a big robotic disclaimer out of it — keep it light and keep the focus on helping them (e.g. "I'm part of the AA Creative support team, here to sort this out for you").
 
 HOW TO TALK:
 - Match the customer's language and tone. If they write in English, reply in English. If they write in Urdu or Roman Urdu, reply in Roman Urdu — don't force English on someone who isn't using it.
@@ -146,8 +153,13 @@ GETTING NAME & EMAIL:
 - If it naturally fits (e.g. they're asking for a quote, want to place an order, or the conversation is moving toward next steps) and you don't already have their name/email (Customer Known Email: ${isGuestEmail ? 'Unknown' : visitorEmail}), ask for it once, naturally — not as a rigid rule tacked onto every single reply.
 - Once they've shared their name, use it naturally in conversation going forward — don't over-thank them for it every time.
 
-HANDLING ORDER STATUS / COMPLAINTS / HUMAN REQUESTS:
-- If the customer asks about an existing order, has an urgent problem, explicitly asks for a human/agent, or the issue needs a real person's judgment:
+HANDLING "TALK TO A HUMAN / AGENT" REQUESTS — TRY TO HELP FIRST:
+- If the customer simply asks to speak to a human/agent/manager WITHOUT yet describing what the actual problem is, do NOT escalate or create a ticket yet. Instead, warmly ask them to briefly tell you what's going on so you can try to sort it out right away (or make sure it's routed correctly if a teammate really does need to step in). Set "shouldEscalate": false and "requiresTicket": false for this reply.
+- Once they've described the actual issue (in this message or a follow-up), first try to genuinely answer it using the business knowledge below (pricing, formats, turnaround, policies, etc.). If you can resolve it yourself, do that — don't escalate just because they mentioned wanting an agent.
+- Only escalate (create a ticket) once you've tried and the issue genuinely needs a person — e.g. an order-specific problem, a complaint, a stitch-out defect, a request only a human can act on, or a returning/existing customer's specific unresolved issue.
+
+HANDLING ORDER STATUS / COMPLAINTS / GENUINE HUMAN-NEEDED ISSUES:
+- If the customer asks about an existing order, has an urgent problem, or the issue needs a real person's judgment and you can't resolve it with the knowledge below:
   - Set "shouldEscalate": true and "requiresTicket": true
   - Set "problemSummary" to a clear, specific description of what they need
   - In your reply, let them know a support ticket has been created and the team has been notified — mention the team's email (aacreativeemb@gmail.com) if it helps
@@ -201,11 +213,11 @@ Respond STRICTLY in JSON format matching the schema provided.`;
               },
               shouldEscalate: {
                 type: Type.BOOLEAN,
-                description: 'Set true if user asks for order status, human agent, technical complaint, or ticket generation.'
+                description: 'Set true only once a genuine issue has been described and cannot be resolved from business knowledge (order problem, complaint, defect, or a described issue a human must handle). A bare "talk to an agent" with no described problem should be false — ask what the issue is instead.'
               },
               requiresTicket: {
                 type: Type.BOOLEAN,
-                description: 'Set true if a support ticket should be created and emails sent to admin and customer.'
+                description: 'Set true only alongside shouldEscalate, once the actual problem is known and a ticket + emails to admin and customer are genuinely warranted.'
               },
               problemSummary: {
                 type: Type.STRING,
@@ -394,9 +406,43 @@ function getFallbackAiResponse(
   const isGuestEmail = !visitorEmail || visitorEmail.includes('@guest.aaemb.com') || visitorEmail.includes('visitor@example.com');
   const isGuestName = !visitorName || visitorName === 'Website Visitor' || visitorName === 'Visitor';
 
-  // 1. Order status / Order inquiry detection / Human support / Ticket request
-  if (lower.includes('order') || lower.includes('staus') || lower.includes('status') || lower.includes('track') || lower.includes('3541') || lower.includes('3542') || !!orderMatch || lower.includes('agent') || lower.includes('human') || lower.includes('ticket')) {
+  // 1. Bare "talk to a human/agent" request with NO described problem yet —
+  // try to help first instead of instantly opening a ticket. We detect a
+  // "bare" request as one that mentions agent/human/representative but has
+  // no problem-describing words and no order number attached.
+  const mentionsHumanRequest = /\b(agent|human|representative|live\s*person|manager|customer\s*service)\b/i.test(lower);
+  const hasProblemDetails = /\b(problem|issue|complain|complaint|wrong|broken|error|damaged|defect|refund|not\s*working|mistake|urgent|delay|delayed|late|missing|stitch\s*out|quality|order|status|track|3541|3542)\b/i.test(lower) || !!orderMatch;
+  // If the previous AI message was our own "please tell me the issue" prompt,
+  // treat this reply as the problem description regardless of its wording.
+  const lastAiMsg = [...previousMessages].reverse().find(m => m.senderType === 'ai');
+  const wasAskedForDetails = !!lastAiMsg && /tell me (a )?(bit|little) more about|what'?s going on|briefly describe|what seems to be the issue/i.test(lastAiMsg.text);
+
+  if (mentionsHumanRequest && !hasProblemDetails && !wasAskedForDetails) {
+    const greetingName = extractedName || (!isGuestName ? visitorName : '');
+    const personalizedHello = greetingName ? `Of course, ${greetingName}! ` : `Of course! `;
+    return {
+      aiResponseText: `${personalizedHello}Before I bring in a teammate, could you tell me a bit more about what's going on? I'll try to sort it out for you directly, and if it does need a specialist, I'll make sure it's routed correctly with all the details.`,
+      confidenceScore: 90,
+      shouldEscalate: false,
+      requiresTicket: false,
+      languageDetected: 'English',
+      isHumanRequested: true,
+      extractedDetails: {
+        email: emailMatch ? emailMatch[0] : undefined,
+        phone: phoneMatch ? phoneMatch[0] : undefined,
+        name: extractedName
+      }
+    };
+  }
+
+  // 2. Order status / genuine problem description / explicit ticket request
+  // (including a follow-up reply after we just asked "what's going on?") —
+  // this is where a real ticket is actually warranted.
+  if (wasAskedForDetails || lower.includes('order') || lower.includes('staus') || lower.includes('status') || lower.includes('track') || lower.includes('3541') || lower.includes('3542') || !!orderMatch || lower.includes('ticket') || (mentionsHumanRequest && hasProblemDetails)) {
     let orderNumber = orderMatch ? orderMatch[1] : (userMessageText.match(/\d{3,}/)?.[0] || undefined);
+    // Guard against the loose "order <word>" pattern grabbing a stray word
+    // (e.g. "order arrived") instead of an actual order number/code.
+    if (orderNumber && !/\d/.test(orderNumber)) orderNumber = undefined;
     let orderDisplay = orderNumber ? `Order #${orderNumber}` : 'your order';
     let projectType = lower.includes('vector') ? 'Vector Art' : lower.includes('digitiz') ? 'Embroidery Digitizing' : 'Digitizing/Vector';
 
