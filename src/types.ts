@@ -139,6 +139,8 @@ export interface Conversation {
   queuePosition?: number;
   /** True once the AI has asked "anything else?" and is waiting for the visitor's final answer before closing. */
   awaitingCloseConfirmation?: boolean;
+  /** Timestamp of the last idle "anything else?" nudge sent after ~1 minute of visitor silence, so it's only sent once per silence gap (reset whenever the visitor sends a new message). */
+  idleNudgeSentAt?: string;
   /** Timestamp the conversation was closed (manually or auto-closed after 30 min visitor inactivity). */
   closedAt?: string;
   /** How the conversation ended: agent/AI resolved it, or it auto-expired from visitor inactivity. */
