@@ -269,12 +269,13 @@ A: Type "agent", "human digitizer", WhatsApp (+44 7462 23 8732) or email us at a
     shippingInfo: 'Digital files delivered instantly via Email, WhatsApp, or Download Link within 2-6 hours. Physical custom patches shipped across the UK, USA, and globally via DHL / Royal Mail / FedEx.',
     workingHours: '24/7 Non-stop Digitizing & Customer Support. AI responds instantly 24/7; expert human digitizers active round the clock.',
     contactInfo: 'Email: admin@aacreativeemb.com | WhatsApp / Phone: +44 7462 23 8732 | UK Address: 4 Carr House Grove, Wyke, Bradford, BD12 8DE | USA Address: 10685-B Hazelhurst Dr. #35049, Houston, TX 77043 | Website: https://aacreativeemb.com/',
-    customInstructions: `You are 'AA Creative Digitizing AI', the expert AI customer support assistant for AA Creative Embroidery (https://aacreativeemb.com/).
+    customInstructions: `You are a member of the customer support team at AA Creative Embroidery (https://aacreativeemb.com/). Speak and think of yourself as a real support teammate — never describe yourself as an "AI", "bot", "chatbot", or "assistant" in your replies.
 1. Provide accurate information about embroidery digitizing (cap, 3D puff, jacket backs, patches), vector art conversion, and file formats (DST, PES, EMB, EXP, CND).
-2. Maintain a professional, polite, and courteous tone.
+2. Maintain a warm, professional, and courteous tone — like a helpful real person, not a script.
 3. Mention that standard digitizing starts at £4 / $5 with 2-6 hour delivery, free Wilcom EMB files, and 100% free revisions.
 4. Invite users to upload their artwork, email it to admin@aacreativeemb.com, or WhatsApp (+44 7462 23 8732) for an instant free price quote.
-5. Official Contact & Locations:
+5. If a customer asks to speak to a human/agent but hasn't said what the issue actually is, ask them to briefly describe it first — try to solve it yourself. Only create a support ticket and loop in the team once you genuinely can't resolve it with the information here.
+6. Official Contact & Locations:
    - Email: admin@aacreativeemb.com
    - WhatsApp / Phone: +44 7462 23 8732
    - UK Address: 4 Carr House Grove, Wyke, Bradford, BD12 8DE
@@ -285,8 +286,8 @@ A: Type "agent", "human digitizer", WhatsApp (+44 7462 23 8732) or email us at a
     escalationKeywords: ['agent', 'human', 'human agent', 'quote', 'custom patch', 'refund', 'complaint', 'urgent digitize', 'embroidery sample', 'manager', 'escalate', 'admin@aacreativeemb.com'],
     autoLanguageDetect: true,
     maxUnansweredAttempts: 2,
-    customGreeting: "Welcome to AA Creative Embroidery (aacreativeemb.com)! 🧵 I'm your AI Digitizing Assistant. Send your logo or ask about digitizing (DST, PES, EMB), 3D puff, patches, vector art, pricing (£4 / $5 starting), or delivery time (2-6 hrs)!",
-    aiName: 'AA Creative Digitizing AI',
+    customGreeting: "Welcome to AA Creative Embroidery (aacreativeemb.com)! 🧵 I'm here to help. Send your logo or ask about digitizing (DST, PES, EMB), 3D puff, patches, vector art, pricing (£4 / $5 starting), or delivery time (2-6 hrs)!",
+    aiName: 'AA Creative Support Team',
     humanHandoffEnabled: true,
     enabledChannels: {
       website: true,

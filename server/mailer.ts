@@ -27,11 +27,13 @@ async function getIpv4Host(hostname: string): Promise<string> {
 // Helper to send real emails via SMTP, Gmail App Password, or Resend
 export async function sendAdminEmailNotification({
   to = 'aacreativeemb@gmail.com',
+  cc,
   subject,
   html,
   text
 }: {
   to?: string;
+  cc?: string | string[];
   subject: string;
   html: string;
   text: string;
@@ -72,12 +74,13 @@ export async function sendAdminEmailNotification({
       await transporter.sendMail({
         from: `"AA Creative Support Desk" <${smtpUser}>`,
         to,
+        cc,
         subject,
         text,
         html
       });
 
-      console.log(`[REAL EMAIL SENT VIA GMAIL SMTP 465] Dispatched to ${to}: "${subject}"`);
+      console.log(`[REAL EMAIL SENT VIA GMAIL SMTP 465] Dispatched to ${to}${cc ? ` (cc: ${cc})` : ''}: "${subject}"`);
       return { success: true, method: 'Gmail SMTP (Port 465 SSL)' };
     } catch (err465: any) {
       console.warn(`[SMTP 465 Attempt Failed] ${err465.message}, trying Port 587 (STARTTLS IPv4)...`);
@@ -106,12 +109,13 @@ export async function sendAdminEmailNotification({
         await transporter587.sendMail({
           from: `"AA Creative Support Desk" <${smtpUser}>`,
           to,
+          cc,
           subject,
           text,
           html
         });
 
-        console.log(`[REAL EMAIL SENT VIA GMAIL SMTP 587] Dispatched to ${to}: "${subject}"`);
+        console.log(`[REAL EMAIL SENT VIA GMAIL SMTP 587] Dispatched to ${to}${cc ? ` (cc: ${cc})` : ''}: "${subject}"`);
         return { success: true, method: 'Gmail SMTP (Port 587 TLS)' };
       } catch (err587: any) {
         console.error(`[SMTP ERROR] IPv4 Port 465 & 587 failed:`, err587.message);
@@ -134,6 +138,7 @@ export async function sendAdminEmailNotification({
         body: JSON.stringify({
           from: 'AA Creative Support <support@aacreativeemb.com>',
           to: [to],
+          cc: cc ? (Array.isArray(cc) ? cc : [cc]) : undefined,
           subject,
           text,
           html
