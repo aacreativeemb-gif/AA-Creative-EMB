@@ -8,12 +8,15 @@ import {
   ChevronRight,
   Mail,
   Phone,
-  Search
+  Search,
+  Trash2
 } from 'lucide-react';
 import { Visitor } from '../types';
 
 interface LeadsViewProps {
   leads: Visitor[];
+  onDeleteLead?: (visitorId: string) => void;
+  onClearAllLeads?: () => void;
 }
 
 const isRealLeadEmail = (email?: string) =>
@@ -26,10 +29,11 @@ const monthLabel = (key: string) => {
   return new Date(y, m - 1, 1).toLocaleDateString([], { month: 'long', year: 'numeric' });
 };
 
-export const LeadsView: React.FC<LeadsViewProps> = ({ leads }) => {
+export const LeadsView: React.FC<LeadsViewProps> = ({ leads, onDeleteLead, onClearAllLeads }) => {
   const [viewMode, setViewMode] = useState<'month' | 'all'>('month');
   const [selectedMonth, setSelectedMonth] = useState<string>(monthKey(new Date()));
   const [searchQuery, setSearchQuery] = useState('');
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   // Every visitor who came through the pre-chat lead form (has a real name +
   // email), newest first.
@@ -213,7 +217,46 @@ export const LeadsView: React.FC<LeadsViewProps> = ({ leads }) => {
           <Download className="w-4 h-4" />
           Download Excel
         </button>
+
+        {onClearAllLeads && (
+          <button
+            type="button"
+            onClick={() => setShowClearConfirm(true)}
+            disabled={allLeads.length === 0}
+            title="Permanently delete all leads"
+            className="flex items-center gap-1.5 text-xs font-semibold px-3.5 py-2 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 transition disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Trash2 className="w-4 h-4" />
+            Clear Leads
+          </button>
+        )}
       </div>
+
+      {/* Clear-all-leads confirmation */}
+      {showClearConfirm && (
+        <div className="bg-rose-50 border border-rose-300 rounded-xl p-4 text-sm text-rose-900 space-y-3">
+          <p className="font-semibold">Are you sure you want to delete / clear all leads? This permanently removes every captured lead (name, email, phone) and cannot be undone.</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                onClearAllLeads && onClearAllLeads();
+                setShowClearConfirm(false);
+              }}
+              className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-4 py-2 rounded-lg"
+            >
+              Yes, Clear All Leads
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowClearConfirm(false)}
+              className="bg-white border border-slate-300 text-slate-600 font-semibold text-xs px-4 py-2 rounded-lg"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Leads Table */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
@@ -245,6 +288,7 @@ export const LeadsView: React.FC<LeadsViewProps> = ({ leads }) => {
                   <th className="p-3">Email</th>
                   <th className="p-3">Date</th>
                   <th className="p-3">Time</th>
+                  {onDeleteLead && <th className="p-3 text-right">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -267,6 +311,22 @@ export const LeadsView: React.FC<LeadsViewProps> = ({ leads }) => {
                       </td>
                       <td className="p-3 text-slate-500">{dt.date}</td>
                       <td className="p-3 text-slate-500">{dt.time}</td>
+                      {onDeleteLead && (
+                        <td className="p-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(`Permanently delete the lead for ${lead.name}? This cannot be undone.`)) {
+                                onDeleteLead(lead.id);
+                              }
+                            }}
+                            title="Permanently delete this lead"
+                            className="p-1.5 rounded-md border border-slate-200 text-slate-400 hover:text-rose-700 hover:bg-rose-50 hover:border-rose-200 transition"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
