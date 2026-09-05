@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Sparkles,
   History,
+  Contact,
   X
 } from 'lucide-react';
 
@@ -52,6 +53,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'automations', label: 'Triggers', icon: Sliders },
     { id: 'knowledge_base', label: 'Knowledge Base', icon: BookOpen },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+    { id: 'leads', label: 'Leads', icon: Contact },
     { id: 'settings', label: 'Settings', icon: ShieldCheck }
   ];
 
