@@ -70,25 +70,23 @@ Bulk Discount Packages (USD) — purchase at https://portal.aacreativeemb.com/lo
 // A reply "answered something" (pricing, turnaround, formats, a ticket
 // number, etc.) if it contains concrete specifics like this — as opposed to
 // a bare greeting or "which project can we help with?" qualifying message.
+// (Currently unused directly, but kept as it documents the same heuristic
+// the idle-nudge scheduler in server.ts relies on conceptually.)
 function looksLikeSubstantiveAnswer(text: string): boolean {
   return /[£$]\s?\d|\bDST\b|\bPES\b|\bEMB\b|\bEXP\b|\bJEF\b|turnaround|\d\s*(-|to)\s*\d?\s*hour|\bformat/i.test(text);
 }
+void looksLikeSubstantiveAnswer;
 
-// Guarantees every non-escalated reply that actually answers something ends
-// with a genuine "anything else?" question. The visitor's NEXT message is
-// only ever treated as "chat is done, close it" if they were truly just
-// asked this — so this function is what makes that downstream check
-// safe/accurate instead of closing the chat the moment someone happens to
-// say "thanks" right after a plain greeting.
-function ensureClosingQuestion(responseText: string, isFirstEverMessage: boolean, shouldEscalate: boolean): string {
-  if (shouldEscalate || !responseText) return responseText;
-  // A first-ever message that's just a greeting/qualifying reply (no real
-  // answer given yet) shouldn't be forced to ask "anything else?" — that
-  // question only makes sense once something has actually been answered.
-  if (isFirstEverMessage && !looksLikeSubstantiveAnswer(responseText)) return responseText;
-  const alreadyAsks = /anything\s*else|kuch\s*(aur|or)|aur\s*kuch|kisi\s*aur\s*(cheez|chiz)|need\s*anything\s*more|help\s*you\s*with\s*(anything|something)\s*else/i.test(responseText);
-  if (alreadyAsks) return responseText;
-  return responseText.trim() + '\n\nIs there anything else I can help you with today?';
+// Previously this force-appended "Is there anything else I can help you with
+// today?" onto every single non-escalated reply, which felt robotic when it
+// showed up after almost every message. That's now handled by a separate,
+// human-feeling mechanism: the platform waits for a real lull (about a
+// minute of the visitor going quiet after an answer) before nudging with
+// that question — see the idle-nudge check in server.ts. This function is
+// kept as a pass-through (and left in place so call sites don't need to
+// change) but no longer injects anything.
+function ensureClosingQuestion(responseText: string, _isFirstEverMessage: boolean, _shouldEscalate: boolean): string {
+  return responseText;
 }
 
 export async function processCustomerMessageWithAI(
@@ -171,8 +169,8 @@ HANDLING ORDER STATUS / COMPLAINTS / GENUINE HUMAN-NEEDED ISSUES:
   - If you do have it, just confirm they'll get a confirmation there
 
 WRAPPING UP:
-- Whenever you've actually answered what the customer needed and there's nothing pending (no ticket, no missing info you're waiting on), you MUST end your reply with a natural closing question such as "Is there anything else I can help you with today?" — every single answer-giving reply needs this, no exceptions, EXCEPT your very first greeting to a brand-new visitor (that first message is about finding out what they need, not wrapping up).
-- If the customer then says "no" / "thanks" / "that's all" etc., that's your cue the conversation is over — a system process handles the goodbye and rating prompt automatically, so you don't need to say goodbye yourself.
+- Just answer naturally and stop — you do NOT need to add "anything else?" or similar to every reply. The platform automatically checks in with the customer after they've gone quiet for a bit, so don't force a closing question onto every single answer; it reads as robotic when it shows up after every message.
+- If the customer says "no" / "thanks" / "that's all" etc. right after being asked (by you or by that automatic check-in), that's the cue the conversation is over — a system process handles the goodbye and rating prompt automatically, so you don't need to say goodbye yourself.
 
 HONESTY RULES:
 - Never invent prices, turnaround times, or order status — only use what's in the business knowledge below.
