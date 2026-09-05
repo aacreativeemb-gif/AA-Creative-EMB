@@ -3,7 +3,7 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { globalStore, RETURNING_SESSION_WINDOW_MS } from './server/store';
 import { processCustomerMessageWithAI, generateAiConversationSummary, translateTextToRomanUrdu, polishOrTranslateAgentReply, generateAgentReplySuggestions } from './server/aiEngine';
-import { Message, Conversation, Ticket, User } from './src/types';
+import { Message, Conversation, Ticket, User, Visitor } from './src/types';
 import { sendAdminEmailNotification } from './server/mailer';
 import { hashPassword, verifyPassword } from './server/auth';
 
@@ -58,6 +58,35 @@ async function detectVisitorLocation(clientIp: string): Promise<DetectedLocation
   }
 
   return fallback;
+}
+
+// Before a support ticket is created for a customer, we need real contact
+// info to actually reach them — not the placeholder "Website Visitor" /
+// "visitor@example.com" values used while the pre-chat lead form hasn't
+// been completed. This checks what's usable and what's still missing.
+function getContactInfoStatus(visitor: Visitor) {
+  const hasName = !!visitor.name && visitor.name !== 'Website Visitor' && !visitor.name.startsWith('Visitor #') && visitor.name.trim() !== '';
+  const hasEmail = !!visitor.email && !visitor.email.includes('@guest.aaemb.com') && !visitor.email.includes('visitor@example.com');
+  const hasPhone = !!visitor.phone && visitor.phone.trim() !== '';
+  return { hasName, hasEmail, hasPhone, complete: hasName && hasEmail && hasPhone };
+}
+
+// Builds a warm, natural request for exactly whichever of name/email/phone
+// are still missing, so the ticket can actually reach the customer.
+function buildMissingContactPrompt(visitor: Visitor, status: ReturnType<typeof getContactInfoStatus>): string {
+  const missing: string[] = [];
+  if (!status.hasName) missing.push('your name');
+  if (!status.hasEmail) missing.push('a valid email address');
+  if (!status.hasPhone) missing.push('a phone number');
+
+  const greeting = status.hasName ? `Thanks, ${visitor.name}! ` : `Thanks for letting me know! `;
+  const list = missing.length === 1
+    ? missing[0]
+    : missing.length === 2
+      ? `${missing[0]} and ${missing[1]}`
+      : `${missing.slice(0, -1).join(', ')}, and ${missing[missing.length - 1]}`;
+
+  return `${greeting}Before I get this over to our team, could you share ${list}? That way an administrator can reach out to you directly about this.`;
 }
 
 async function startServer() {
@@ -867,7 +896,29 @@ async function startServer() {
         conv.lastMessageAt = aiMessage.timestamp;
 
         // If AI determines escalation or ticket generation is needed (order tracking, missing info, complaints, human support)
-        if ((aiResult.shouldEscalate || aiResult.requiresTicket) && globalStore.aiSettings.humanHandoffEnabled) {
+        const contactStatus = getContactInfoStatus(visitor);
+        const readyFromPending = !!conv.pendingEscalation && contactStatus.complete;
+        if ((aiResult.shouldEscalate || aiResult.requiresTicket || readyFromPending) && globalStore.aiSettings.humanHandoffEnabled) {
+          if (!contactStatus.complete) {
+            // We know a ticket is genuinely needed, but can't actually reach
+            // this customer yet — hold the escalation and ask for whatever
+            // of name/email/phone is still missing instead of opening a
+            // ticket admin can't act on.
+            const problemSummary = aiResult.problemSummary || aiResult.escalationReason || `Customer inquiry regarding: "${text}"`;
+            const orderInfo = aiResult.extractedDetails?.orderNumber ? `Order #${aiResult.extractedDetails.orderNumber} (${aiResult.extractedDetails.projectType || 'Digitizing/Vector'})` : 'Digitizing / Vector Inquiry';
+            conv.pendingEscalation = conv.pendingEscalation || {
+              problemSummary,
+              orderInfo,
+              createdAt: new Date().toISOString()
+            };
+
+            const askText = buildMissingContactPrompt(visitor, contactStatus);
+            if (aiMessage) {
+              aiMessage.text = askText;
+              conv.lastMessageText = askText;
+            }
+            conv.awaitingCloseConfirmation = false;
+          } else {
           if (aiResult.aiSummary) {
             conv.aiSummary = aiResult.aiSummary;
           } else {
@@ -878,13 +929,17 @@ async function startServer() {
           conv.priority = 'urgent';
 
           const ticketNumber = `TKT-${1000 + globalStore.tickets.length + 1}`;
-          
+
+          const problemSummary = conv.pendingEscalation?.problemSummary || aiResult.problemSummary || aiResult.escalationReason || `Customer inquiry regarding: "${text}"`;
+          const orderInfo = conv.pendingEscalation?.orderInfo || (aiResult.extractedDetails?.orderNumber ? `Order #${aiResult.extractedDetails.orderNumber} (${aiResult.extractedDetails.projectType || 'Digitizing/Vector'})` : 'Digitizing / Vector Inquiry');
+          const customerPhone = visitor.phone || aiResult.extractedDetails?.phone || 'Not provided in chat';
+
           // Replace any {{TICKET_NUMBER}} placeholder in AI message text
           let finalAiResponse = aiResult.aiResponseText.replace(/\{\{TICKET_NUMBER\}\}/g, `#${ticketNumber}`);
-          
+
           // If AI text didn't explicitly include the ticket number, format a clean message
           if (!finalAiResponse.includes(ticketNumber)) {
-            finalAiResponse = `${finalAiResponse}\n\n🎫 Support Ticket #${ticketNumber} has been generated for your inquiry. Our administration team (aacreativeemb@gmail.com) and your email have been notified with full details. An administrator will contact you directly to resolve your request ASAP.`;
+            finalAiResponse = `Thank you, ${visitor.name}! I have noted your inquiry regarding ${orderInfo} and generated Support Ticket #${ticketNumber} for you.\n\nOur administration team (aacreativeemb@gmail.com) and your email have been notified with full details. An administrator will contact you directly to resolve your request ASAP.`;
           }
 
           if (aiMessage) {
@@ -892,9 +947,7 @@ async function startServer() {
             conv.lastMessageText = finalAiResponse;
           }
 
-          const customerPhone = aiResult.extractedDetails?.phone || visitor.phone || 'Not provided in chat';
-          const orderInfo = aiResult.extractedDetails?.orderNumber ? `Order #${aiResult.extractedDetails.orderNumber} (${aiResult.extractedDetails.projectType || 'Digitizing/Vector'})` : 'Digitizing / Vector Inquiry';
-          const problemSummary = aiResult.problemSummary || aiResult.escalationReason || `Customer inquiry regarding: "${text}"`;
+          conv.pendingEscalation = undefined;
 
           // Generate Ticket Record in DB
           const newTicket: Ticket = {
@@ -1058,6 +1111,7 @@ async function startServer() {
                 </div>
               `
             });
+          }
           }
         }
       }
@@ -1351,6 +1405,33 @@ async function startServer() {
     }
     globalStore.tickets = globalStore.tickets.filter(t => t.id !== id);
     globalStore.analytics.openTicketsCount = globalStore.tickets.filter(t => t.status === 'open').length;
+    globalStore.persist();
+    res.json({ success: true });
+  });
+
+  // Permanently delete a single lead/visitor record. Admin-only action from
+  // the Leads page — deliberately requires an explicit visitorId, never a
+  // bulk filter, so a single accidental click can't wipe more than one row.
+  app.delete('/api/leads/:visitorId', (req, res) => {
+    const { visitorId } = req.params;
+    const exists = globalStore.visitors.some(v => v.id === visitorId);
+    if (!exists) {
+      return res.status(404).json({ success: false, error: 'Lead not found' });
+    }
+    globalStore.visitors = globalStore.visitors.filter(v => v.id !== visitorId);
+    globalStore.persist();
+    res.json({ success: true });
+  });
+
+  // Admin-forced "clear all leads". This is destructive and is only ever
+  // triggered from the Leads page after the admin confirms an explicit
+  // "Are you sure you want to delete/clear all leads?" prompt in the UI —
+  // leads are never cleared automatically by any server restart, deploy, or
+  // data migration.
+  app.post('/api/admin/clear-leads', (req, res) => {
+    const isRealLeadEmail = (email?: string) =>
+      !!email && !email.includes('@guest.aaemb.com') && !email.includes('visitor@example.com');
+    globalStore.visitors = globalStore.visitors.filter(v => !isRealLeadEmail(v.email));
     globalStore.persist();
     res.json({ success: true });
   });
