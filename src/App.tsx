@@ -10,6 +10,7 @@ import { IntegrationsView } from './components/IntegrationsView';
 import { AutomationsView } from './components/AutomationsView';
 import { KnowledgeBaseView } from './components/KnowledgeBaseView';
 import { AnalyticsView } from './components/AnalyticsView';
+import { LeadsView } from './components/LeadsView';
 import { SettingsView } from './components/SettingsView';
 import { WidgetEmbedModal } from './components/WidgetEmbedModal';
 import { AdminAuth } from './components/AdminAuth';
@@ -653,6 +654,10 @@ export default function App() {
 
         {activeTab === 'analytics' && (
           <AnalyticsView analytics={analytics} />
+        )}
+
+        {activeTab === 'leads' && (
+          <LeadsView leads={visitors} />
         )}
 
         {activeTab === 'settings' && (
