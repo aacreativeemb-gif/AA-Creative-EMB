@@ -498,7 +498,7 @@ async function startServer() {
   // nothing is emailed just for landing on the page or opening the widget.
   app.post('/api/visitor/lead', async (req, res) => {
     try {
-      const { visitorId, name, email, pageUrl } = req.body;
+      const { visitorId, name, email, phone, pageUrl } = req.body;
       if (!visitorId || !name || !email) {
         return res.status(400).json({ error: 'visitorId, name and email are required.' });
       }
@@ -515,6 +515,7 @@ async function startServer() {
           id: visitorId,
           propertyId: 'prop_1',
           name, email,
+          phone: phone || undefined,
           ip: clientIp,
           location: { country, city, flag },
           browser: 'Chrome', os: 'Windows 11', device: 'Desktop',
@@ -537,6 +538,7 @@ async function startServer() {
         isNewVisitor = visitor.visitsCount <= 1;
         visitor.name = name;
         visitor.email = email;
+        if (phone) visitor.phone = phone;
         visitor.status = 'online';
         visitor.lastActiveAt = nowIso;
         visitor.offlineSince = undefined;
@@ -594,7 +596,7 @@ async function startServer() {
         sendAdminEmailNotification({
           to: 'aacreativeemb@gmail.com',
           subject: `🔔 [Live Chat Lead] ${name} started a chat (${visitor.location.flag} ${visitor.location.country})`,
-          text: `Hello Admin,\n\nA customer just entered live chat on AA Creative Embroidery.\n\nStatus: ${isNewVisitor ? 'NEW customer' : 'EXISTING / returning customer'}\nName: ${name}\nEmail: ${email}\nDate: ${arrivalDate.toLocaleDateString()}\nTime: ${arrivalDate.toLocaleTimeString()}\nIP Address: ${clientIp}\nLocation: ${visitor.location.flag} ${visitor.location.city}, ${visitor.location.country}\nCurrent Page: ${visitor.currentUrl}\n\nOpen live chat: https://chat.aacreativeemb.com\n\nAA Creative Embroidery UK`,
+          text: `Hello Admin,\n\nA customer just entered live chat on AA Creative Embroidery.\n\nStatus: ${isNewVisitor ? 'NEW customer' : 'EXISTING / returning customer'}\nName: ${name}\nEmail: ${email}\nPhone: ${phone || 'Not provided'}\nDate: ${arrivalDate.toLocaleDateString()}\nTime: ${arrivalDate.toLocaleTimeString()}\nIP Address: ${clientIp}\nLocation: ${visitor.location.flag} ${visitor.location.city}, ${visitor.location.country}\nCurrent Page: ${visitor.currentUrl}\n\nOpen live chat: https://chat.aacreativeemb.com\n\nAA Creative Embroidery UK`,
           html: `
             <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #0f172a; color: #ffffff; padding: 24px; border-radius: 12px; border: 1px solid #1e293b;">
               <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #334155; padding-bottom: 14px; margin-bottom: 16px;">
@@ -604,6 +606,7 @@ async function startServer() {
               <div style="background: #1e293b; padding: 16px; border-radius: 8px; font-size: 13px; line-height: 1.6; color: #f1f5f9; margin-bottom: 20px;">
                 <p style="margin: 0 0 6px 0;"><strong>👤 Name:</strong> ${name}</p>
                 <p style="margin: 0 0 6px 0;"><strong>✉️ Email:</strong> ${email}</p>
+                <p style="margin: 0 0 6px 0;"><strong>📞 Phone:</strong> ${phone || 'Not provided'}</p>
                 <p style="margin: 0 0 6px 0;"><strong>🌍 Location:</strong> ${visitor.location.flag} ${visitor.location.city}, ${visitor.location.country}</p>
                 <p style="margin: 0 0 6px 0;"><strong>🌐 IP Address:</strong> <code>${clientIp}</code></p>
                 <p style="margin: 0 0 6px 0;"><strong>📅 Date:</strong> ${arrivalDate.toLocaleDateString()}</p>
@@ -994,6 +997,7 @@ async function startServer() {
           if (visitor.email && !visitor.email.includes('@guest.aaemb.com') && !visitor.email.includes('visitor@example.com')) {
             sendAdminEmailNotification({
               to: visitor.email,
+              cc: 'admin@aacreativeemb.com',
               subject: `🎫 [Ticket #${ticketNumber}] We received your inquiry - AA Creative Embroidery`,
               text: `Dear ${visitor.name},\n\nThank you for reaching out to AA Creative Embroidery.\n\nWe have generated Support Ticket #${ticketNumber} for your inquiry regarding:\n"${problemSummary}"\n\nOur administrative and technical production team has been notified and is currently reviewing your details. An administrator will contact you shortly with an update.\n\nTicket Summary:\n- Ticket Number: #${ticketNumber}\n- Status: In Review\n- Priority: High Priority\n- Problem Description: ${problemSummary}\n\nIf you have additional design files or instructions, you can reply directly to this email.\n\nBest regards,\nCustomer Support Team\nAA Creative Embroidery UK Ltd\nEmail: aacreativeemb@gmail.com\nPhone / WhatsApp: +44 7462 23 8732\nWebsite: https://aacreativeemb.com`,
               html: `
@@ -1296,6 +1300,7 @@ async function startServer() {
     // Send Real Email Notification for new ticket
     sendAdminEmailNotification({
       to: 'aacreativeemb@gmail.com',
+      cc: newTicket.visitorEmail && !newTicket.visitorEmail.includes('@guest.aaemb.com') ? newTicket.visitorEmail : undefined,
       subject: `🎫 [New Ticket #${newTicket.ticketNumber}] ${newTicket.subject}`,
       text: `Hello Admin,\n\nA new support ticket has been created on the AA Creative Support Desk.\n\nTicket: #${newTicket.ticketNumber}\nCustomer: ${newTicket.visitorName} (${newTicket.visitorEmail})\nSubject: ${newTicket.subject}\nDetails: ${newTicket.description}\nPriority: ${newTicket.priority.toUpperCase()}\n\nView and manage tickets at https://chat.aacreativeemb.com\n\nAA Creative Embroidery UK`,
       html: `
@@ -1309,6 +1314,29 @@ async function startServer() {
         </div>
       `
     });
+
+    // Also send the customer their own confirmation, CC'd to the official
+    // admin address, so both the customer and admin@aacreativeemb.com have
+    // a copy of the same ticket thread.
+    if (newTicket.visitorEmail && !newTicket.visitorEmail.includes('@guest.aaemb.com') && !newTicket.visitorEmail.includes('visitor@example.com')) {
+      sendAdminEmailNotification({
+        to: newTicket.visitorEmail,
+        cc: 'admin@aacreativeemb.com',
+        subject: `🎫 [Ticket #${newTicket.ticketNumber}] We've logged your request - AA Creative Embroidery`,
+        text: `Dear ${newTicket.visitorName},\n\nThank you for contacting AA Creative Embroidery.\n\nWe have created Support Ticket #${newTicket.ticketNumber} for your request:\n"${newTicket.subject}"\n\n${newTicket.description}\n\nOur team will be in touch shortly.\n\nBest regards,\nAA Creative Embroidery UK Ltd\nEmail: admin@aacreativeemb.com | Phone/WhatsApp: +44 7462 23 8732`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #ffffff; color: #1e293b; padding: 24px; border-radius: 12px; border: 1px solid #e2e8f0;">
+            <h3 style="color: #1e1b4b; margin-top: 0;">🎫 Support Ticket #${newTicket.ticketNumber}</h3>
+            <p style="font-size: 14px; color: #334155;">Dear ${newTicket.visitorName},</p>
+            <p style="font-size: 14px; color: #475569;">Thank you for contacting AA Creative Embroidery. We've logged your request:</p>
+            <div style="background: #f8fafc; padding: 14px; border-radius: 8px; margin: 15px 0; color: #0f172a; font-size: 13px; border-left: 4px solid #4f46e5;">
+              <strong>${newTicket.subject}</strong><br/>${newTicket.description.replace(/\n/g, '<br/>')}
+            </div>
+            <p style="font-size: 13px; color: #64748b;">Our team will be in touch shortly.<br/>AA Creative Embroidery UK Ltd — admin@aacreativeemb.com | +44 7462 23 8732</p>
+          </div>
+        `
+      });
+    }
 
     res.json({ success: true, ticket: newTicket });
   });
@@ -1667,6 +1695,9 @@ async function startServer() {
   var leadInfo = null;
   try {
     leadInfo = JSON.parse(localStorage.getItem(storageKeyLead) || 'null');
+    // Older cached leads (saved before the phone number field existed) are
+    // treated as incomplete so the visitor is asked once for their phone too.
+    if (leadInfo && !leadInfo.phone) leadInfo = null;
   } catch(e) {
     leadInfo = null;
   }
@@ -2171,9 +2202,10 @@ async function startServer() {
     </div>
     <div id="aa-prechat-screen">
       <p class="aa-prechat-title">Start a conversation</p>
-      <p class="aa-prechat-sub">Please share your name &amp; email so our team can assist you properly.</p>
+      <p class="aa-prechat-sub">Please share your name, email &amp; phone number so our team can assist you properly.</p>
       <input type="text" id="aa-prechat-name" class="aa-prechat-input" placeholder="Your Name" autocomplete="off" />
       <input type="email" id="aa-prechat-email" class="aa-prechat-input" placeholder="Your Email" autocomplete="off" />
+      <input type="tel" id="aa-prechat-phone" class="aa-prechat-input" placeholder="Your Phone Number" autocomplete="off" />
       <button type="button" id="aa-prechat-submit">Start Chat</button>
     </div>
     <div id="aa-messages-container"></div>
@@ -2218,6 +2250,7 @@ async function startServer() {
   var closeBtn = chatBox.querySelector('#aa-close-btn');
   var prechatNameInput = chatBox.querySelector('#aa-prechat-name');
   var prechatEmailInput = chatBox.querySelector('#aa-prechat-email');
+  var prechatPhoneInput = chatBox.querySelector('#aa-prechat-phone');
   var prechatSubmitBtn = chatBox.querySelector('#aa-prechat-submit');
   var feedbackOverlay = chatBox.querySelector('#aa-feedback-overlay');
   var feedbackStars = chatBox.querySelectorAll('.aa-star');
@@ -2263,7 +2296,7 @@ async function startServer() {
       launcher.classList.remove('aa-has-unread');
       if (leadInfo && !hasSyncedThisLoad) {
         hasSyncedThisLoad = true;
-        establishConversation(leadInfo.name, leadInfo.email, true).catch(function() {});
+        establishConversation(leadInfo.name, leadInfo.email, leadInfo.phone, true).catch(function() {});
       }
       inputEl.focus();
       msgContainer.scrollTop = msgContainer.scrollHeight;
@@ -2299,14 +2332,15 @@ async function startServer() {
     sendMessage(val);
   });
 
-  // --- Pre-chat Name + Email gate ---
+  // --- Pre-chat Name + Email + Phone gate ---
   function submitLeadFromForm() {
     var name = prechatNameInput.value.trim();
     var email = prechatEmailInput.value.trim();
-    if (!name || !email) return;
+    var phone = prechatPhoneInput.value.trim();
+    if (!name || !email || !phone) return;
     prechatSubmitBtn.disabled = true;
     prechatSubmitBtn.textContent = 'Starting...';
-    establishConversation(name, email, false)
+    establishConversation(name, email, phone, false)
       .then(function() {
         prechatSubmitBtn.disabled = false;
         prechatSubmitBtn.textContent = 'Start Chat';
@@ -2321,18 +2355,20 @@ async function startServer() {
   prechatSubmitBtn.addEventListener('click', submitLeadFromForm);
   prechatNameInput.addEventListener('keypress', function(e) { if (e.key === 'Enter') submitLeadFromForm(); });
   prechatEmailInput.addEventListener('keypress', function(e) { if (e.key === 'Enter') submitLeadFromForm(); });
+  prechatPhoneInput.addEventListener('keypress', function(e) { if (e.key === 'Enter') submitLeadFromForm(); });
   if (leadInfo) {
     prechatNameInput.value = leadInfo.name || '';
     prechatEmailInput.value = leadInfo.email || '';
+    prechatPhoneInput.value = leadInfo.phone || '';
   }
 
-  // Submits (or silently re-syncs) the Name+Email lead. This is the ONLY
-  // place that creates a real lead / triggers the admin email alert
+  // Submits (or silently re-syncs) the Name+Email+Phone lead. This is the
+  // ONLY place that creates a real lead / triggers the admin email alert
   // server-side. It also decides resume-vs-fresh chat thread and, when
   // silent === true, re-runs automatically each time the widget is opened
-  // (using the cached name/email) so the "standard" 1-hour resume window
-  // is honoured without asking the visitor again.
-  function establishConversation(name, email, silent) {
+  // (using the cached name/email/phone) so the "standard" 1-hour resume
+  // window is honoured without asking the visitor again.
+  function establishConversation(name, email, phone, silent) {
     return fetch(serverUrl + '/api/visitor/lead', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2340,6 +2376,7 @@ async function startServer() {
         visitorId: visitorId,
         name: name,
         email: email,
+        phone: phone,
         pageUrl: window.location.href
       })
     })
@@ -2347,7 +2384,7 @@ async function startServer() {
     .then(function(data) {
       if (!data || !data.success) return;
 
-      leadInfo = { name: name, email: email };
+      leadInfo = { name: name, email: email, phone: phone };
       localStorage.setItem(storageKeyLead, JSON.stringify(leadInfo));
 
       var newConvId = data.conversation ? data.conversation.id : null;
