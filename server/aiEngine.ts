@@ -158,6 +158,10 @@ HANDLING "TALK TO A HUMAN / AGENT" REQUESTS — TRY TO HELP FIRST:
 - Once they've described the actual issue (in this message or a follow-up), first try to genuinely answer it using the business knowledge below (pricing, formats, turnaround, policies, etc.). If you can resolve it yourself, do that — don't escalate just because they mentioned wanting an agent.
 - Only escalate (create a ticket) once you've tried and the issue genuinely needs a person — e.g. an order-specific problem, a complaint, a stitch-out defect, a request only a human can act on, or a returning/existing customer's specific unresolved issue.
 
+HANDLING ORDER STATUS REQUESTS — GET THE SPECIFICS FIRST:
+- If the customer asks about their order status but hasn't given an order number, a design name, or the project type (Digitizing vs Vector) yet, do NOT escalate or create a ticket yet. Ask them for their order number OR the design name, and whether it's a Digitizing order or a Vector order, so the ticket can be routed correctly. Set "shouldEscalate": false and "requiresTicket": false for this reply.
+- Once they've given at least an order number or a design name (with or without the project type), go ahead and create the ticket — you genuinely can't check order status yourself, so this is always a real escalation once you have something to route on.
+
 HANDLING ORDER STATUS / COMPLAINTS / GENUINE HUMAN-NEEDED ISSUES:
 - If the customer asks about an existing order, has an urgent problem, or the issue needs a real person's judgment and you can't resolve it with the knowledge below:
   - Set "shouldEscalate": true and "requiresTicket": true
@@ -435,16 +439,53 @@ function getFallbackAiResponse(
     };
   }
 
+  // 1b. Bare order-status query with no order number, design name, or
+  // project type given yet — ask for those specifics before opening a
+  // ticket, instead of ticketing on a vague "what's my order status?".
+  const mentionsOrderStatus = /\b(order|status|track|staus)\b/i.test(lower);
+  const hasProjectType = lower.includes('vector') || lower.includes('digitiz');
+  const wasAskedOrderDetails = !!lastAiMsg && /order number or (the )?design name/i.test(lastAiMsg.text);
+
+  if (mentionsOrderStatus && !orderMatch && !hasProjectType && !wasAskedOrderDetails && !wasAskedForDetails) {
+    const greetingName = extractedName || (!isGuestName ? visitorName : '');
+    const personalizedHello = greetingName ? `Sure, ${greetingName}! ` : `Sure! `;
+    return {
+      aiResponseText: `${personalizedHello}Could you share your order number or the design name, and let me know if it's a Digitizing order or a Vector order? Once I have that I can look into it, and if needed have our team come straight back to you on it.`,
+      confidenceScore: 90,
+      shouldEscalate: false,
+      requiresTicket: false,
+      languageDetected: 'English',
+      isHumanRequested: true,
+      extractedDetails: {
+        email: emailMatch ? emailMatch[0] : undefined,
+        phone: phoneMatch ? phoneMatch[0] : undefined,
+        name: extractedName
+      }
+    };
+  }
+
   // 2. Order status / genuine problem description / explicit ticket request
-  // (including a follow-up reply after we just asked "what's going on?") —
-  // this is where a real ticket is actually warranted.
-  if (wasAskedForDetails || lower.includes('order') || lower.includes('staus') || lower.includes('status') || lower.includes('track') || lower.includes('3541') || lower.includes('3542') || !!orderMatch || lower.includes('ticket') || (mentionsHumanRequest && hasProblemDetails)) {
+  // (including a follow-up reply after we just asked "what's going on?" or
+  // "order number / design name?") — this is where a real ticket is
+  // actually warranted.
+  if (wasAskedForDetails || wasAskedOrderDetails || mentionsOrderStatus || !!orderMatch || lower.includes('ticket') || (mentionsHumanRequest && hasProblemDetails)) {
     let orderNumber = orderMatch ? orderMatch[1] : (userMessageText.match(/\d{3,}/)?.[0] || undefined);
     // Guard against the loose "order <word>" pattern grabbing a stray word
     // (e.g. "order arrived") instead of an actual order number/code.
     if (orderNumber && !/\d/.test(orderNumber)) orderNumber = undefined;
-    let orderDisplay = orderNumber ? `Order #${orderNumber}` : 'your order';
     let projectType = lower.includes('vector') ? 'Vector Art' : lower.includes('digitiz') ? 'Embroidery Digitizing' : 'Digitizing/Vector';
+    // If this is a reply to our "order number or design name?" prompt and no
+    // number was given, treat the reply itself as the design name (stripping
+    // common filler like "it's the ... digitizing order" down to the name).
+    let designName: string | undefined = undefined;
+    if (wasAskedOrderDetails && !orderNumber) {
+      designName = userMessageText
+        .replace(/^\s*(it'?s|its|this is|that'?s)\s+(the\s+)?/i, '')
+        .replace(/,?\s*\b(digitizing|vector)\s*(order|art)?\b\.?\s*$/i, '')
+        .replace(/\s+(order|design)\s*$/i, '')
+        .trim() || userMessageText.trim();
+    }
+    let orderDisplay = orderNumber ? `Order #${orderNumber}` : (designName ? `the "${designName}" design` : 'your order');
 
     const problemDesc = `Customer inquiry for ${projectType} ${orderDisplay}. Inquiry: "${userMessageText}"`;
 
@@ -452,7 +493,7 @@ function getFallbackAiResponse(
     const personalizedHello = greetingName ? `Thank you, ${greetingName}! ` : '';
 
     return {
-      aiResponseText: `${personalizedHello}I have noted your inquiry regarding ${orderDisplay} and generated Support Ticket {{TICKET_NUMBER}} for you.\n\nOur administrative team has been notified immediately via high-priority email alert (aacreativeemb@gmail.com). We have also logged your request to send a confirmation directly to your email address. An administrator will review your order details and contact you directly to resolve this promptly.`,
+      aiResponseText: `${personalizedHello}Ok, I have noted your inquiry regarding ${orderDisplay} and generated Support Ticket {{TICKET_NUMBER}} for you.\n\nOur administrative team has been notified immediately via high-priority email alert (aacreativeemb@gmail.com) and will contact you directly about this order right away. We have also logged your request to send a confirmation directly to your email address.`,
       confidenceScore: 95,
       shouldEscalate: true,
       requiresTicket: true,
