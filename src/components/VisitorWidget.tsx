@@ -44,7 +44,8 @@ export const VisitorWidget: React.FC<VisitorWidgetProps> = ({
   const [inputMessage, setInputMessage] = useState('');
   const [visitorName, setVisitorName] = useState('Ali Raza');
   const [visitorEmail, setVisitorEmail] = useState('ali.raza@gmail.com');
-  const [hasStartedChat, setHasStartedChat] = useState(true);
+  const [visitorPhone, setVisitorPhone] = useState('');
+  const [hasStartedChat, setHasStartedChat] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [rating, setRating] = useState<number | null>(null);
   const [feedbackText, setFeedbackText] = useState('');
@@ -59,7 +60,7 @@ export const VisitorWidget: React.FC<VisitorWidgetProps> = ({
 
   const handleStartChat = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!visitorName.trim() || !visitorEmail.trim()) return;
+    if (!visitorName.trim() || !visitorEmail.trim() || !visitorPhone.trim()) return;
     setHasStartedChat(true);
     if (messages.length === 0) {
       onSendMessage(`Hello! My name is ${visitorName}. I need assistance.`);
@@ -236,6 +237,17 @@ export const VisitorWidget: React.FC<VisitorWidgetProps> = ({
                     required
                     className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                     placeholder="ali.raza@gmail.com"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-600 block mb-1">Phone Number</label>
+                  <input
+                    type="tel"
+                    value={visitorPhone}
+                    onChange={e => setVisitorPhone(e.target.value)}
+                    required
+                    className="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="+44 7XXX XXXXXX"
                   />
                 </div>
                 <button
